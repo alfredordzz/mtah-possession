@@ -62,3 +62,8 @@ __pycache__/
 venv/
 env/
 .DS_Store
+
+# derived match data, never commit
+cache/
+*.npz
+*.parquet
