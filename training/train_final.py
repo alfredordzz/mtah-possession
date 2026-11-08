@@ -1,6 +1,7 @@
 """Train the final model on external games only and write its parameter file.
 
-    python training/train_final.py VALIDATION_ROOT                 # v8 -> model_v8_params.json
+    python training/train_final.py VALIDATION_ROOT                 # v9 -> model_v9_params.json
+    python training/train_final.py VALIDATION_ROOT --version v8    # v8 -> model_v8_params.json
     python training/train_final.py VALIDATION_ROOT --version v6    # v6 -> model_v6_params.json
     python training/train_final.py VALIDATION_ROOT --version v4    # v4 -> model_v4_params.json
 
@@ -14,7 +15,7 @@ Protocol
        (evaluation/possession_metrics.py), and pick the Viterbi costs with the best mean spellF1.
        The baseline (nearest player + majority vote over +/-50 frames) is scored alongside.
     2. Fit the final regressions on the hard variants of all 8 games and write them, with the
-       chosen costs, to the parameter file that possession_v8.py (or v6 / v4) applies to
+       chosen costs, to the parameter file that possession_v9.py (or v8 / v6 / v4) applies to
        the competition match.
 
 No data from the competition match and none of its ground truth is read here.
@@ -37,6 +38,7 @@ import model_v2 as M2  # noqa: E402
 import model_v4 as M4  # noqa: E402
 import model_v6 as M6  # noqa: E402
 import model_v8 as M8  # noqa: E402
+import model_v9 as M9  # noqa: E402
 import possession_metrics as pm  # noqa: E402
 
 VARIANTS = ("noisy", "noisy_hard", "smooth", "smooth_hard")
@@ -46,8 +48,8 @@ DEAD = (25.0, 35.0, 50.0)
 PITCH = (105.0, 68.0)
 STRIDE = 5          # fit on every 5th frame: neighbouring frames are nearly identical
 L2 = 1.0
-MODELS = {"v4": M4, "v6": M6, "v8": M8}
-M = M8              # the model being trained; set from --version in main()
+MODELS = {"v4": M4, "v6": M6, "v8": M8, "v9": M9}
+M = M9              # the model being trained; set from --version in main()
 
 
 def load_npz(path):
@@ -83,22 +85,30 @@ def prepare(g):
 
 
 def fit(preps):
-    def stack(key, mask_fn, label_fn):
-        X, y = [], []
+    # v9 fits the team models with extra weight on frames around changes of possession;
+    # earlier versions weigh every frame alike
+    weigh = getattr(M, "transition_weights", None)
+
+    def stack(key, mask_fn, label_fn, weighted=False):
+        X, y, w = [], [], []
         for p in preps:
             idx = np.flatnonzero(mask_fn(p))[::STRIDE]
             X.append(p[key][idx])
             y.append(label_fn(p)[idx])
-        return np.vstack(X), np.concatenate(y)
+            w.append(weigh(p["gt"], (pm.H, pm.A))[idx] if weighted and weigh else np.ones(len(idx)))
+        return np.vstack(X), np.concatenate(y), np.concatenate(w)
+
+    def fitted(X, y, w):
+        return M2.Logistic(L2).fit(X, y, sample_weight=w)
 
     graded = lambda p: p["gt"] != pm.X
     alive = lambda p: (p["gt"] == pm.H) | (p["gt"] == pm.A)
     alive_seen = lambda p: alive(p) & p["seen"]
     is_dead = lambda p: (p["gt"] == pm.D).astype(float)
     is_home = lambda p: (p["gt"] == pm.H).astype(float)
-    return {"dead": M2.Logistic(L2).fit(*stack("dall", graded, is_dead)),
-            "team_noball": M2.Logistic(L2).fit(*stack("tn", alive, is_home)),
-            "team_ball": M2.Logistic(L2).fit(*stack("tb", alive_seen, is_home))}
+    return {"dead": fitted(*stack("dall", graded, is_dead)),
+            "team_noball": fitted(*stack("tn", alive, is_home, weighted=True)),
+            "team_ball": fitted(*stack("tb", alive_seen, is_home, weighted=True))}
 
 
 def logits(m, p):
@@ -134,7 +144,7 @@ def baseline(g, window=50):
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("validation_root")
-    parser.add_argument("--version", choices=sorted(MODELS), default="v8")
+    parser.add_argument("--version", choices=sorted(MODELS), default="v9")
     parser.add_argument("--out", default=None, help="default: model_<version>_params.json")
     args = parser.parse_args()
     global M
@@ -181,7 +191,9 @@ def main():
                          "control_reach": M4.CONTROL_REACH},
                "flight": {"assign_win": M6.ASSIGN_WIN, "speed": M6.FLIGHT_SPEED, "min_m": M6.FLIGHT_MIN_M,
                           "max_s": M6.FLIGHT_MAX_S, "decay_s": M6.DECAY_S,
-                          "lookahead_s": list(M6.LOOKAHEAD_S)} if args.version in ("v6", "v8") else None,
+                          "lookahead_s": list(M6.LOOKAHEAD_S)} if args.version in ("v6", "v8", "v9") else None,
+               "transition_weight": {"weight": M9.TRANSITION_WEIGHT, "window": M9.TRANSITION_WINDOW}
+               if args.version == "v9" else None,
                "validation_spell_f1": {v: float(np.mean(list(per[v].values()))) for v in VARIANTS},
                "models": {k: v.to_dict() for k, v in m.items()},
                "trained_on": names, "train_sets": list(TRAIN),
