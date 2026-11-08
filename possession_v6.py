@@ -129,6 +129,8 @@ def main():
     print("\nfull match (no ground truth, sanity only)")
     print("  {} possessions, mean {:.1f} s, home share {:.1%}".format(
         stats["n_spells"], stats["mean_duration_s"], stats["home_share"]))
+    print("  (on the 8 validation games the model finds 75-90% of the true number of possessions;"
+          " merging the shortest ones scores better than guessing them)")
     print("  dead ball {:.1%} of graded frames (model's frame-level P(D) > 0.5 on {:.1%})".format(
         np.mean(codes[graded] == M.D), np.mean(ld[graded] > 0)))
     print("  team evidence leans home on {:.1%} of graded frames".format(np.mean(lt[graded] > 0)))
@@ -138,7 +140,7 @@ def main():
     print("  ball seen: labelled D on {:.1%}".format(np.mean(codes[graded & seen] == M.D)))
     _, touch = M4.detect_touches(c)
     minutes = graded.sum() / FPS / 60
-    print("  touches detected: {:.1f} per minute of graded time (validation games, matched tracker profile: 18-23)".format(
+    print("  touches detected: {:.1f} per minute of graded time (8 validation games, smooth tracker profile: 13-23)".format(
         touch[graded].sum() / minutes))
     sign, conf = M.touch_teams(c, touch)
     ball_s = M4.smooth_ball(c["_ball"].astype(np.float64), M4.TOUCH_SMOOTH)
