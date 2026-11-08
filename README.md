@@ -11,7 +11,8 @@ the ball is out of play and, if it is alive, the probability that each team has 
 comes from the automatic tracking: where the ball and the players are, how fast the players move,
 how long the ball has been missing and where it was last seen, detected touches of the ball and how
 long a team has kept a player on it, the ball's flights between touches (passes, clearances and
-interceptions, and which team is about to receive the ball), and the Smart Tagging phases and
+interceptions, and which team is about to receive the ball), the shape of each team (depth, width,
+compactness, players past the ball, how fast they close on it), and the Smart Tagging phases and
 kick-offs. A Viterbi decoder,
 run separately on each half, turns these probabilities into the most likely sequence of possessions
 and stoppages, charging a cost for every change so that a touch without control does not flip
@@ -26,12 +27,12 @@ The match data is not in this repository; unpack the bundle into `data/` as desc
 
 ```bash
 python cache_atd.py        # reads the tactical ATD once into cache/atd_tactical.npz (+ sanity checks)
-python possession_v6.py    # writes evaluation/results/v6.csv and validates it (the submission)
+python possession_v8.py    # writes evaluation/results/v8.csv and validates it (the submission)
 ```
 
-`possession_v6.py` applies `model_v6.py` with the weights in `model_v6_params.json`. The output is
-deterministic: the same data and code produce the same file. The previous version can still be
-reproduced with `python possession_v4.py` (`evaluation/results/v4.csv`).
+`possession_v8.py` applies `model_v8.py` with the weights in `model_v8_params.json`. The output is
+deterministic: the same data and code produce the same file. Earlier versions can still be
+reproduced with `python possession_v6.py` and `python possession_v4.py`.
 
 ## Reproducing the training (external data only)
 
@@ -47,7 +48,8 @@ Requirements: `pip install -r training/requirements-training.txt`.
 
 ```bash
 python training/build_validation.py sample-data/data idsse_npz validation
-python training/train_final.py validation                 # rewrites model_v6_params.json
+python training/train_final.py validation                 # rewrites model_v8_params.json
+python training/train_final.py validation --version v6    # rewrites model_v6_params.json
 python training/train_final.py validation --version v4    # rewrites model_v4_params.json
 ```
 
@@ -79,12 +81,18 @@ each scored by a model that never saw it:
 |---|---|---|---|---|
 | Baseline (nearest player, +/-50 frames) | 0.335 | 0.316 | 0.282 | 0.252 |
 | v4 | 0.637 | 0.613 | 0.590 | 0.570 |
-| **v6 (this submission)** | **0.665** | **0.642** | **0.618** | **0.601** |
+| v6 | 0.665 | 0.642 | 0.618 | 0.601 |
+| **v8 (this submission)** | **0.675** | **0.656** | **0.635** | **0.620** |
 
-v6 adds the ball-flight features to v4; it scored higher than v4 on 30 of the 32 match x variant
-pairs. Ideas that did not beat v4 on these games and were left out: decision trees instead of
-logistic regressions, set-piece features, temperature calibration and a semi-Markov decoder with
-learned possession durations.
+v6 adds the ball-flight features to v4 (higher than v4 on 30 of the 32 match x variant pairs); v8
+adds team shape and counter-press to v6 (higher on 28 of 32, and on all 8 matches of the
+"smooth + gaps" variant). A ceiling analysis guided the order: with a perfect dead-ball call v6
+would gain 0.04, with a perfect team call 0.33, so the later versions only add team evidence.
+Ideas that did not beat the version of their time and were left out: decision trees instead of
+logistic regressions, set-piece features, temperature calibration, a semi-Markov decoder with
+learned possession durations, and touch-outcome / carry / pressure-count features (v7, +0.006).
+A learning curve (1 to 7 training matches) flattens from 5 matches on, so more external matches
+would mostly sharpen the validation rather than the model.
 
 For reference, the official baseline scores 0.2433 on the full competition match.
 
@@ -93,12 +101,12 @@ For reference, the official baseline scores 0.2433 on the full competition match
 | Path | Purpose |
 |---|---|
 | `cache_atd.py` | Reads the tactical ATD into arrays in metres, with checks against the published numbers |
-| `possession_v6.py` | Produces the submission file |
-| `model_v2.py`, `model_v3.py`, `model_v4.py`, `model_v6.py` | The model (each version builds on the features of the previous ones) |
-| `model_v6_params.json` | Learned weights and decoding costs |
+| `possession_v8.py` | Produces the submission file |
+| `model_v2.py`, `model_v3.py`, `model_v4.py`, `model_v6.py`, `model_v8.py` | The model (each version builds on the features of the previous ones) |
+| `model_v8_params.json` | Learned weights and decoding costs |
 | `training/` | Conversion of the external data, validation variants, training |
 | `diagnostics/` | Automatic checks on the provided data; they print aggregates only |
-| `possession_v1.py`, `possession_v3.py`, `possession_v4.py`, `model_v3_params.json`, `model_v4_params.json` | Earlier versions, kept for the record |
+| `possession_v1.py`, `possession_v3.py`, `possession_v4.py`, `possession_v6.py`, `model_v3_params.json`, `model_v4_params.json`, `model_v6_params.json` | Earlier versions, kept for the record |
 
 ## Rules and data
 

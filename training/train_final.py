@@ -1,6 +1,7 @@
 """Train the final model on external games only and write its parameter file.
 
-    python training/train_final.py VALIDATION_ROOT                 # v6 -> model_v6_params.json
+    python training/train_final.py VALIDATION_ROOT                 # v8 -> model_v8_params.json
+    python training/train_final.py VALIDATION_ROOT --version v6    # v6 -> model_v6_params.json
     python training/train_final.py VALIDATION_ROOT --version v4    # v4 -> model_v4_params.json
 
 VALIDATION_ROOT is the folder written by training/build_validation.py:
@@ -13,7 +14,7 @@ Protocol
        (evaluation/possession_metrics.py), and pick the Viterbi costs with the best mean spellF1.
        The baseline (nearest player + majority vote over +/-50 frames) is scored alongside.
     2. Fit the final regressions on the hard variants of all 8 games and write them, with the
-       chosen costs, to the parameter file that possession_v6.py (or possession_v4.py) applies to
+       chosen costs, to the parameter file that possession_v8.py (or v6 / v4) applies to
        the competition match.
 
 No data from the competition match and none of its ground truth is read here.
@@ -35,6 +36,7 @@ for sub in ("", "evaluation"):
 import model_v2 as M2  # noqa: E402
 import model_v4 as M4  # noqa: E402
 import model_v6 as M6  # noqa: E402
+import model_v8 as M8  # noqa: E402
 import possession_metrics as pm  # noqa: E402
 
 VARIANTS = ("noisy", "noisy_hard", "smooth", "smooth_hard")
@@ -44,8 +46,8 @@ DEAD = (25.0, 35.0, 50.0)
 PITCH = (105.0, 68.0)
 STRIDE = 5          # fit on every 5th frame: neighbouring frames are nearly identical
 L2 = 1.0
-MODELS = {"v4": M4, "v6": M6}
-M = M6              # the model being trained; set from --version in main()
+MODELS = {"v4": M4, "v6": M6, "v8": M8}
+M = M8              # the model being trained; set from --version in main()
 
 
 def load_npz(path):
@@ -132,7 +134,7 @@ def baseline(g, window=50):
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("validation_root")
-    parser.add_argument("--version", choices=sorted(MODELS), default="v6")
+    parser.add_argument("--version", choices=sorted(MODELS), default="v8")
     parser.add_argument("--out", default=None, help="default: model_<version>_params.json")
     args = parser.parse_args()
     global M
@@ -179,7 +181,7 @@ def main():
                          "control_reach": M4.CONTROL_REACH},
                "flight": {"assign_win": M6.ASSIGN_WIN, "speed": M6.FLIGHT_SPEED, "min_m": M6.FLIGHT_MIN_M,
                           "max_s": M6.FLIGHT_MAX_S, "decay_s": M6.DECAY_S,
-                          "lookahead_s": list(M6.LOOKAHEAD_S)} if args.version == "v6" else None,
+                          "lookahead_s": list(M6.LOOKAHEAD_S)} if args.version in ("v6", "v8") else None,
                "validation_spell_f1": {v: float(np.mean(list(per[v].values()))) for v in VARIANTS},
                "models": {k: v.to_dict() for k, v in m.items()},
                "trained_on": names, "train_sets": list(TRAIN),
