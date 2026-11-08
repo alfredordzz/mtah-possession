@@ -35,6 +35,26 @@ python possession_v9.py    # writes evaluation/results/v9.csv and validates it (
 deterministic: the same data and code produce the same file. Earlier versions can still be
 reproduced with `python possession_v8.py`, `possession_v6.py` and `possession_v4.py`.
 
+### Checking the result on another machine
+
+The submission must come out identical on any machine. On a second computer (Windows PowerShell
+shown; the same steps work on macOS / Linux):
+
+```powershell
+git clone https://github.com/alfredordzz/mtah-possession.git
+cd mtah-possession
+py -3.12 -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements-lock.txt
+# unpack the organisers' bundle into data\ (see DATA.md) or set $env:MTAH_DATA_DIR
+python cache_atd.py
+python possession_v9.py
+Get-FileHash evaluation\results\v9.csv      # SHA-256, compare with the first machine
+```
+
+If the hashes differ, `python diagnostics/compare_submissions.py first.csv second.csv` reports how
+many frames differ (counts only).
+
 ## Reproducing the training (external data only)
 
 Requirements: `pip install -r training/requirements-training.txt`.
