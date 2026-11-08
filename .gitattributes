@@ -1,0 +1,5 @@
+# keep line endings identical on every system (scripts, params, docs)
+* text=auto eol=lf
+*.npz binary
+*.png binary
+*.pdf binary

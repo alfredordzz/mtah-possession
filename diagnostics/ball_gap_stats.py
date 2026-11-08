@@ -1,6 +1,6 @@
 """Automatic check: statistics of the gaps in the ball track. Prints aggregates only.
 
-    python ball_gap_stats.py
+    python diagnostics/ball_gap_stats.py
 
 Reads cache/atd_tactical.npz (from cache_atd.py). Uses only the provided tracking, no labels, and
 prints only counts, shares and percentiles, so the output is safe to share.
@@ -12,7 +12,7 @@ import warnings
 
 import numpy as np
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repository root
 sys.path.insert(0, ROOT)
 from games import GAME, GAMES, half_video_blocks  # noqa: E402
 

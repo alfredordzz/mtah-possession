@@ -67,3 +67,9 @@ env/
 cache/
 *.npz
 *.parquet
+
+# external training data, rebuilt by training/ scripts
+sample-data/
+idsse/
+idsse_npz/
+validation/

@@ -1,0 +1,6 @@
+# Only needed to rebuild the training data and retrain model_v4_params.json.
+# The submission itself needs only requirements-lock.txt.
+numpy==2.5.4
+pandas==3.1.1
+kloppy==3.19.1          # reads the IDSSE (DFL / Sportec) XML files in idsse_convert.py
+huggingface_hub         # optional: download IDSSE with snapshot_download
