@@ -1,6 +1,7 @@
-"""Train the final v4 model on external games only and write model_v4_params.json.
+"""Train the final model on external games only and write its parameter file.
 
-    python training/train_final.py VALIDATION_ROOT [--out model_v4_params.json]
+    python training/train_final.py VALIDATION_ROOT                 # v6 -> model_v6_params.json
+    python training/train_final.py VALIDATION_ROOT --version v4    # v4 -> model_v4_params.json
 
 VALIDATION_ROOT is the folder written by training/build_validation.py:
     VALIDATION_ROOT/metrica/{noisy,noisy_hard,smooth,smooth_hard}/val_game{1,2,3}.npz
@@ -12,7 +13,8 @@ Protocol
        (evaluation/possession_metrics.py), and pick the Viterbi costs with the best mean spellF1.
        The baseline (nearest player + majority vote over +/-50 frames) is scored alongside.
     2. Fit the final regressions on the hard variants of all 8 games and write them, with the
-       chosen costs, to the parameter file that possession_v4.py applies to the competition match.
+       chosen costs, to the parameter file that possession_v6.py (or possession_v4.py) applies to
+       the competition match.
 
 No data from the competition match and none of its ground truth is read here.
 """
@@ -32,15 +34,18 @@ for sub in ("", "evaluation"):
     sys.path.insert(0, os.path.join(ROOT, sub))
 import model_v2 as M2  # noqa: E402
 import model_v4 as M4  # noqa: E402
+import model_v6 as M6  # noqa: E402
 import possession_metrics as pm  # noqa: E402
 
 VARIANTS = ("noisy", "noisy_hard", "smooth", "smooth_hard")
 TRAIN = ("noisy_hard", "smooth_hard")
-SWITCH = (5.0, 8.0, 12.0)
+SWITCH = (5.0, 8.0, 12.0, 16.0, 20.0)
 DEAD = (25.0, 35.0, 50.0)
 PITCH = (105.0, 68.0)
 STRIDE = 5          # fit on every 5th frame: neighbouring frames are nearly identical
 L2 = 1.0
+MODELS = {"v4": M4, "v6": M6}
+M = M6              # the model being trained; set from --version in main()
 
 
 def load_npz(path):
@@ -68,9 +73,9 @@ def game_paths(root):
 def prepare(g):
     """Features and labels for one game, kept small (float32, only what fitting needs)."""
     c = M2.common(g["ball"], g["pos"], g["speed"], g["slot_team"], g["periods"], PITCH)
-    gap = M4.gap_context(c)
-    dall = M4.features_dead(c, gap)
-    tn, tb = M4.features_team(c, g["pos"], g["slot_team"], g["ball"], gap)
+    gap = M.gap_context(c)
+    dall = M.features_dead(c, gap)
+    tn, tb = M.features_team(c, g["pos"], g["slot_team"], g["ball"], gap)
     return dict(gt=g["gt"], periods=g["periods"], seen=c["seen"],
                 dall=dall.astype(np.float32), tn=tn.astype(np.float32), tb=tb.astype(np.float32))
 
@@ -127,8 +132,12 @@ def baseline(g, window=50):
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("validation_root")
-    parser.add_argument("--out", default=os.path.join(ROOT, "model_v4_params.json"))
+    parser.add_argument("--version", choices=sorted(MODELS), default="v6")
+    parser.add_argument("--out", default=None, help="default: model_<version>_params.json")
     args = parser.parse_args()
+    global M
+    M = MODELS[args.version]
+    out = args.out or os.path.join(ROOT, "model_{}_params.json".format(args.version))
     warnings.filterwarnings("ignore", category=RuntimeWarning)
     t0 = time.time()
 
@@ -160,22 +169,25 @@ def main():
 
     print("\nheld-out spellF1 (mean over games)      " + "  ".join("{:>11}".format(v) for v in VARIANTS))
     print("  baseline (+/-50 frames)               " + "  ".join("{:>11.4f}".format(np.mean(list(base[v].values()))) for v in VARIANTS))
-    print("  v4 (switch {:g}, dead {:g})              ".format(sc, dc) +
+    print("  {} (switch {:g}, dead {:g})             ".format(args.version, sc, dc) +
           "  ".join("{:>11.4f}".format(np.mean(list(per[v].values()))) for v in VARIANTS))
 
     m = fit([preps[v][n] for v in TRAIN for n in names])
-    payload = {"version": "v4",
+    payload = {"version": args.version,
                "decode": {"switch_cost": sc, "dead_cost": dc, "temp_dead": 1.0, "temp_team": 1.0},
                "touch": {"dv": M4.TOUCH_DV, "reach": M4.TOUCH_REACH, "smooth": M4.TOUCH_SMOOTH,
                          "control_reach": M4.CONTROL_REACH},
+               "flight": {"assign_win": M6.ASSIGN_WIN, "speed": M6.FLIGHT_SPEED, "min_m": M6.FLIGHT_MIN_M,
+                          "max_s": M6.FLIGHT_MAX_S, "decay_s": M6.DECAY_S,
+                          "lookahead_s": list(M6.LOOKAHEAD_S)} if args.version == "v6" else None,
                "validation_spell_f1": {v: float(np.mean(list(per[v].values()))) for v in VARIANTS},
                "models": {k: v.to_dict() for k, v in m.items()},
                "trained_on": names, "train_sets": list(TRAIN),
                "sources": ["Metrica Sports open sample data (games 1-3)",
                            "IDSSE, Bassek et al. 2025, CC BY 4.0 (5 matches)"]}
-    with open(args.out, "w") as f:
+    with open(out, "w") as f:
         json.dump(payload, f, indent=1)
-    print("\nwrote {} ({:.0f}s)".format(args.out, time.time() - t0))
+    print("\nwrote {} ({:.0f}s)".format(out, time.time() - t0))
 
 
 if __name__ == "__main__":

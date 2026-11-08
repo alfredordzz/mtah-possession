@@ -10,7 +10,9 @@ A hybrid hidden Markov model. Two logistic regressions estimate, frame by frame,
 the ball is out of play and, if it is alive, the probability that each team has it. Their evidence
 comes from the automatic tracking: where the ball and the players are, how fast the players move,
 how long the ball has been missing and where it was last seen, detected touches of the ball and how
-long a team has kept a player on it, and the Smart Tagging phases and kick-offs. A Viterbi decoder,
+long a team has kept a player on it, the ball's flights between touches (passes, clearances and
+interceptions, and which team is about to receive the ball), and the Smart Tagging phases and
+kick-offs. A Viterbi decoder,
 run separately on each half, turns these probabilities into the most likely sequence of possessions
 and stoppages, charging a cost for every change so that a touch without control does not flip
 possession. **All weights and costs were learned on 8 external matches**; the competition match and
@@ -24,11 +26,12 @@ The match data is not in this repository; unpack the bundle into `data/` as desc
 
 ```bash
 python cache_atd.py        # reads the tactical ATD once into cache/atd_tactical.npz (+ sanity checks)
-python possession_v4.py    # writes evaluation/results/v4.csv and validates it
+python possession_v6.py    # writes evaluation/results/v6.csv and validates it (the submission)
 ```
 
-`possession_v4.py` applies `model_v4.py` with the weights in `model_v4_params.json`. The output is
-deterministic: the same data and code produce the same file.
+`possession_v6.py` applies `model_v6.py` with the weights in `model_v6_params.json`. The output is
+deterministic: the same data and code produce the same file. The previous version can still be
+reproduced with `python possession_v4.py` (`evaluation/results/v4.csv`).
 
 ## Reproducing the training (external data only)
 
@@ -44,7 +47,8 @@ Requirements: `pip install -r training/requirements-training.txt`.
 
 ```bash
 python training/build_validation.py sample-data/data idsse_npz validation
-python training/train_final.py validation          # rewrites model_v4_params.json
+python training/train_final.py validation                 # rewrites model_v6_params.json
+python training/train_final.py validation --version v4    # rewrites model_v4_params.json
 ```
 
 `train_final.py` first scores every match with a model fitted on the other seven (leave one game
@@ -74,7 +78,13 @@ each scored by a model that never saw it:
 | | noisy | noisy + gaps | smooth (competition-like) | smooth + gaps |
 |---|---|---|---|---|
 | Baseline (nearest player, +/-50 frames) | 0.335 | 0.316 | 0.282 | 0.252 |
-| **v4 (this submission)** | **0.637** | **0.613** | **0.590** | **0.570** |
+| v4 | 0.637 | 0.613 | 0.590 | 0.570 |
+| **v6 (this submission)** | **0.665** | **0.642** | **0.618** | **0.601** |
+
+v6 adds the ball-flight features to v4; it scored higher than v4 on 30 of the 32 match x variant
+pairs. Ideas that did not beat v4 on these games and were left out: decision trees instead of
+logistic regressions, set-piece features, temperature calibration and a semi-Markov decoder with
+learned possession durations.
 
 For reference, the official baseline scores 0.2433 on the full competition match.
 
@@ -83,12 +93,12 @@ For reference, the official baseline scores 0.2433 on the full competition match
 | Path | Purpose |
 |---|---|
 | `cache_atd.py` | Reads the tactical ATD into arrays in metres, with checks against the published numbers |
-| `possession_v4.py` | Produces the submission file |
-| `model_v2.py`, `model_v3.py`, `model_v4.py` | The model (v4 builds on the features of v2 and v3) |
-| `model_v4_params.json` | Learned weights and decoding costs |
+| `possession_v6.py` | Produces the submission file |
+| `model_v2.py`, `model_v3.py`, `model_v4.py`, `model_v6.py` | The model (each version builds on the features of the previous ones) |
+| `model_v6_params.json` | Learned weights and decoding costs |
 | `training/` | Conversion of the external data, validation variants, training |
 | `diagnostics/` | Automatic checks on the provided data; they print aggregates only |
-| `possession_v1.py`, `possession_v3.py`, `model_v3_params.json` | Earlier versions, kept for the record |
+| `possession_v1.py`, `possession_v3.py`, `possession_v4.py`, `model_v3_params.json`, `model_v4_params.json` | Earlier versions, kept for the record |
 
 ## Rules and data
 
