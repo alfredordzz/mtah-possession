@@ -34,7 +34,11 @@ OUT_PATH = os.path.join(ROOT, "evaluation", "results", "v4.csv")
 
 # Smart Tagging exists only for this match, so its weight cannot be calibrated on the validation
 # games. It is kept small: a phase tag nudges the team call, it never decides it on its own.
-TAG_LOGIT = 0.5
+# Its size was checked on the external games with simulated phases matching the coverage (~79% of
+# alive frames), durations and agreement (~73-80%) the real tags showed against the tracking-only
+# model (diagnostics/phase_agreement.py): 0.25 to 0.5 is neutral, 1 or more hurts. 0.25 is the
+# value that did best when the simulated tags were least reliable.
+TAG_LOGIT = 0.25
 OFFENSIVE = {"build up", "progression", "creating chances", "attacking transition", "long ball",
              "ball in final third", "ball in the box", "players in the box", "set pieces"}
 DEFENSIVE = {"defending in attacking third", "defending in middle third",
