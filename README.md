@@ -55,6 +55,19 @@ Get-FileHash evaluation\results\v9.csv      # SHA-256, compare with the first ma
 If the hashes differ, `python diagnostics/compare_submissions.py first.csv second.csv` reports how
 many frames differ (counts only).
 
+### Single-file version
+
+`possession_v9_standalone.py` is the same v9 in one file: every function it needs from
+`model_v2.py` ... `model_v9.py` is copied into it, so it runs with only numpy, the weights in
+`model_v9_params.json` and the organisers' loaders (`games.py`, `starter/`, `evaluation/`).
+It writes `evaluation/results/v9_standalone.csv` (or `--out path.csv`), which is byte-identical to
+`v9.csv`: both scripts were run on external games and their outputs had the same SHA-256.
+
+```powershell
+python possession_v9_standalone.py
+Get-FileHash evaluation\results\v9_standalone.csv   # same hash as v9.csv
+```
+
 ## Reproducing the training (external data only)
 
 Requirements: `pip install -r training/requirements-training.txt`.
