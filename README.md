@@ -68,6 +68,21 @@ python possession_v9_standalone.py
 Get-FileHash evaluation\results\v9_standalone.csv   # same hash as v9.csv
 ```
 
+### v9.1 (candidate, same features as v9)
+
+v9.1 changes one training setting: the team regressions weigh frames within 75 frames (3 s) of a
+change of possession, instead of 25 (1 s). Features, Smart Tagging and decoding costs (16 / 35) are
+the same as v9; only the weights in `model_v9_1_params.json` differ.
+
+On the 8 external games (leave one game out) it beats v9 by +0.0066 (22 of 32 game x variant pairs);
+with the validation variants rebuilt from two other seeds, +0.0075 (27/32) and +0.0078 (25/32).
+Held-out spellF1: noisy 0.704, noisy with gaps 0.685, smooth 0.662, smooth with gaps 0.641.
+
+```powershell
+python possession_v9_standalone.py --params model_v9_1_params.json --out evaluation\results\v9_1.csv
+# retrain: python training/train_final.py VALIDATION_ROOT --version v9 --name v9.1 --transition-window 75
+```
+
 ## Reproducing the training (external data only)
 
 Requirements: `pip install -r training/requirements-training.txt`.
