@@ -87,6 +87,28 @@ python possession_v9_standalone.py --params model_v9_1_params.json --out evaluat
 # retrain: python training/train_final.py VALIDATION_ROOT --version v9 --name v9.1 --transition-window 75
 ```
 
+### v10 (candidate): v9.1 averaged with a sequence model
+
+v10 keeps v9.1 and adds a bidirectional GRU (two layers, 64 units per direction, 135k parameters,
+`model_v10_seq.npz`) that reads the same per-frame features at 5 Hz, forwards and backwards over each
+half. Its log-probabilities for H, A and D are averaged with v9.1's, and the same Viterbi editor
+(16 / 35) decodes the result. Inputs are standardised with the training statistics, columns that never
+varied in training are ignored and values are clipped to +/-6 spreads, so unusual values in a new
+match cannot saturate the network. Trained on the 8 external games only (`training/train_seq.py`);
+inference is plain numpy inside `possession_v9_standalone.py`.
+
+| Check (spellF1, mean) | v9.1 | v10 | v10 better on |
+|---|---|---|---|
+| 8 external games x 4 variants, leave one game out | 0.673 | 0.705 (+0.032) | 31 / 32 |
+| same, variants rebuilt with seed +1000 | 0.671 | 0.694 (+0.023) | 26 / 32 |
+| same, variants rebuilt with seed +2000 | 0.674 | 0.706 (+0.032) | 32 / 32 |
+| 20 SkillCorner games (other provider, other labels), trained on the 8 | 0.448 | 0.456 (+0.008) | 13 / 20 |
+
+```powershell
+python possession_v10.py            # writes evaluation/results/v10.csv
+python diagnostics/feature_shift.py # how far the match's features fall outside the training range
+```
+
 ## Reproducing the training (external data only)
 
 Requirements: `pip install -r training/requirements-training.txt`.

@@ -674,9 +674,66 @@ def tag_team_logit(n, home_name, away_name):
     return np.clip(out, -1, 1), sorted(kickoffs)
 
 
+
+# == 4b. optional sequence model (v10): a bidirectional GRU over the same features ==================
+
+SEQ_STEP = 5      # the GRU reads every 5th frame (5 Hz)
+SEQ_HID = 64
+
+
+def _sigmoid(x):
+    return 1.0 / (1.0 + np.exp(-x))
+
+
+def _gru(x, W, U, b):
+    """One GRU direction over x (T, d) -> (T, SEQ_HID)."""
+    h = np.zeros(SEQ_HID)
+    out = np.empty((len(x), SEQ_HID))
+    xw = x @ W + b
+    Uzr, Uh = U[:, :2 * SEQ_HID], U[:, 2 * SEQ_HID:]
+    for t in range(len(x)):
+        zr = _sigmoid(xw[t, :2 * SEQ_HID] + h @ Uzr)
+        z, r = zr[:SEQ_HID], zr[SEQ_HID:]
+        h = (1 - z) * h + z * np.tanh(xw[t, 2 * SEQ_HID:] + (r * h) @ Uh)
+        out[t] = h
+    return out
+
+
+def seq_log_probs(P, x):
+    """Two bidirectional GRU layers -> log P(H), log P(A), log P(D) per step."""
+    h = np.maximum(x @ P["Win"] + P["bin"], 0.0)
+    for layer in (0, 1):
+        f = _gru(h, P["W%df" % layer], P["U%df" % layer], P["b%df" % layer])
+        b = _gru(h[::-1], P["W%db" % layer], P["U%db" % layer], P["b%db" % layer])[::-1]
+        h = np.concatenate([f, b], -1)
+    lo = h @ P["Wout"] + P["bout"]
+    m = lo.max(-1, keepdims=True)
+    return lo - m - np.log(np.exp(lo - m).sum(-1, keepdims=True))
+
+
+def seq_emissions(path, dall, tn, tb, seen, periods):
+    """Per-frame log-probabilities from the sequence model, frames outside the periods left at 0.
+    Inputs are standardised with the training mean and spread; columns that never varied in training
+    are ignored and every value is clipped to +/-6 spreads, so unusual values cannot saturate it."""
+    z = np.load(path)
+    P = {k: z[k].astype(np.float64) for k in z.files if k not in ("mu", "sd")}
+    mu, sd = z["mu"].astype(np.float64), z["sd"].astype(np.float64)
+    s = seen.astype(np.float32)[:, None]
+    X = np.hstack([dall.astype(np.float32), tn.astype(np.float32), tb.astype(np.float32) * s, s])
+    e = np.zeros((len(X), 3))
+    for first, last in periods:
+        idx = np.arange(first, last + 1, SEQ_STEP)
+        x = np.clip((X[idx].astype(np.float64) - mu) / sd, -6.0, 6.0)
+        x[:, sd < 1e-3] = 0.0
+        lp = seq_log_probs(P, x.astype(np.float32).astype(np.float64))
+        j = np.minimum(np.round((np.arange(first, last + 1) - first) / SEQ_STEP).astype(int), len(lp) - 1)
+        e[first:last + 1] = lp[j]
+    return e
+
+
 # == 5. main =======================================================================================
 
-def main(out_path=None, params_path=None):
+def main(out_path=None, params_path=None, seq_path=None):
     out_path = out_path or OUT_PATH
     params_path = params_path or PARAMS_PATH
     warnings.filterwarnings("ignore", category=RuntimeWarning)  # all-NaN rows are expected
@@ -712,6 +769,10 @@ def main(out_path=None, params_path=None):
 
     # 5: Viterbi per half
     emis = emissions(ld, lt, dec["temp_dead"], dec["temp_team"])
+    if seq_path:
+        # v10: average (in log space) with the sequence model's emissions
+        emis = (emis + seq_emissions(seq_path, dall, tn, tb, seen, periods)) / 2
+        print("sequence model from {}, averaged with the judges".format(os.path.relpath(seq_path, ROOT)))
     codes = np.full(n, X, dtype=np.int8)
     print("model {} from {}".format(params.get("version"), os.path.relpath(params_path, ROOT)))
     print("decoding (switch cost {}, dead cost {})".format(dec["switch_cost"], dec["dead_cost"]))

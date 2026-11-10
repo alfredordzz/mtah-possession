@@ -4,3 +4,5 @@ numpy==2.5.4
 pandas==3.1.1
 kloppy==3.19.1          # reads the IDSSE (DFL / Sportec) XML files in idsse_convert.py
 huggingface_hub         # optional: download IDSSE with snapshot_download
+jax[cpu]==0.12.0.1      # training/train_seq.py only (v10's sequence model); the submission runs it in numpy
+optax==0.2.8
