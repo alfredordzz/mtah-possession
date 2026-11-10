@@ -14,7 +14,7 @@ long a team has kept a player on it, the ball's flights between touches (passes,
 interceptions, and which team is about to receive the ball), the shape of each team (depth, width,
 compactness, players past the ball, how fast they close on it), how both teams turn round when
 the ball changes hands, and the Smart Tagging phases and kick-offs. The team regressions are fitted
-with extra weight on the frames around changes of possession, where the errors are. A Viterbi decoder,
+with extra weight on the 3 s around each change of possession, where the errors are. A Viterbi decoder,
 run separately on each half, turns these probabilities into the most likely sequence of possessions
 and stoppages, charging a cost for every change so that a touch without control does not flip
 possession. **All weights and costs were learned on 8 external matches**; the competition match and
@@ -28,12 +28,15 @@ The match data is not in this repository; unpack the bundle into `data/` as desc
 
 ```bash
 python cache_atd.py        # reads the tactical ATD once into cache/atd_tactical.npz (+ sanity checks)
-python possession_v9.py    # writes evaluation/results/v9.csv and validates it (the submission)
+python possession_v9_1.py  # writes evaluation/results/v9_1.csv and validates it (the submission)
 ```
 
-`possession_v9.py` applies `model_v9.py` with the weights in `model_v9_params.json`. The output is
-deterministic: the same data and code produce the same file. Earlier versions can still be
-reproduced with `python possession_v8.py`, `possession_v6.py` and `possession_v4.py`.
+The submission is v9.1. `possession_v9_1.py` runs the single-file pipeline
+(`possession_v9_standalone.py`) with the weights in `model_v9_1_params.json`. The output is
+deterministic: the same data and code produce the same file, SHA-256
+`FE39AA79A5DD903E088E81861927D72BE71934C7BB9BE7F6CD99FC7B2A8B6F5B`. Earlier versions can still be
+reproduced with `python possession_v9.py` (SHA-256 `A5F2DDEB…F7529CC`), `possession_v8.py`,
+`possession_v6.py` and `possession_v4.py`.
 
 ### Checking the result on another machine
 
@@ -48,12 +51,41 @@ py -3.12 -m venv .venv
 pip install -r requirements-lock.txt
 # unpack the organisers' bundle into data\ (see DATA.md) or set $env:MTAH_DATA_DIR
 python cache_atd.py
-python possession_v9.py
-Get-FileHash evaluation\results\v9.csv      # SHA-256, compare with the first machine
+python possession_v9_1.py
+Get-FileHash evaluation\results\v9_1.csv    # FE39AA79A5DD903E088E81861927D72BE71934C7BB9BE7F6CD99FC7B2A8B6F5B
 ```
 
 If the hashes differ, `python diagnostics/compare_submissions.py first.csv second.csv` reports how
 many frames differ (counts only).
+
+### Single-file version
+
+`possession_v9_standalone.py` is the same v9 in one file: every function it needs from
+`model_v2.py` ... `model_v9.py` is copied into it, so it runs with only numpy, the weights in
+`model_v9_params.json` and the organisers' loaders (`games.py`, `starter/`, `evaluation/`).
+It writes `evaluation/results/v9_standalone.csv` (or `--out path.csv`), which is byte-identical to
+`v9.csv`: both scripts gave the same SHA-256 on external games and on the competition match
+(`A5F2DDEB…`).
+
+```powershell
+python possession_v9_standalone.py
+Get-FileHash evaluation\results\v9_standalone.csv   # same hash as v9.csv
+```
+
+### v9.1 (the submission, same features as v9)
+
+v9.1 changes one training setting: the team regressions weigh frames within 75 frames (3 s) of a
+change of possession, instead of 25 (1 s). Features, Smart Tagging and decoding costs (16 / 35) are
+the same as v9; only the weights in `model_v9_1_params.json` differ.
+
+On the 8 external games (leave one game out) it beats v9 by +0.0066 (22 of 32 game x variant pairs);
+with the validation variants rebuilt from two other seeds, +0.0075 (27/32) and +0.0078 (25/32).
+Held-out spellF1: noisy 0.704, noisy with gaps 0.685, smooth 0.662, smooth with gaps 0.641.
+
+```powershell
+python possession_v9_standalone.py --params model_v9_1_params.json --out evaluation\results\v9_1.csv
+# retrain: python training/train_final.py VALIDATION_ROOT --version v9 --name v9.1 --transition-window 75
+```
 
 ## Reproducing the training (external data only)
 
@@ -105,12 +137,13 @@ each scored by a model that never saw it:
 | v4 | 0.637 | 0.613 | 0.590 | 0.570 |
 | v6 | 0.665 | 0.642 | 0.618 | 0.601 |
 | v8 | 0.675 | 0.656 | 0.635 | 0.620 |
-| **v9 (this submission)** | **0.698** | **0.678** | **0.655** | **0.635** |
+| v9 | 0.698 | 0.678 | 0.655 | 0.635 |
+| **v9.1 (this submission)** | **0.704** | **0.685** | **0.662** | **0.641** |
 
 v6 adds the ball-flight features to v4 (higher than v4 on 30 of the 32 match x variant pairs); v8
 adds team shape and counter-press to v6 (higher on 28 of 32, and on all 8 matches of the
 "smooth + gaps" variant); v9 adds the collective movement reversal and fits the team models with
-three times the weight on frames within 1 s of a change of possession (higher than v8 on all 32). A ceiling analysis guided the order: with a perfect dead-ball call v6
+three times the weight on frames within 1 s of a change of possession (higher than v8 on all 32); v9.1 widens that window to 3 s (+0.007 over v9 averaged over three rebuilds of the validation variants with different seeds, 74 of 96 pairs). A ceiling analysis guided the order: with a perfect dead-ball call v6
 would gain 0.04, with a perfect team call 0.33, so the later versions only add team evidence.
 Ideas that did not beat the version of their time and were left out: decision trees instead of
 logistic regressions, set-piece features, temperature calibration, a semi-Markov decoder with
@@ -128,9 +161,12 @@ For reference, the official baseline scores 0.2433 on the full competition match
 | Path | Purpose |
 |---|---|
 | `cache_atd.py` | Reads the tactical ATD into arrays in metres, with checks against the published numbers |
-| `possession_v9.py` | Produces the submission file |
+| `possession_v9_1.py` | Produces the submission file (v9.1) |
+| `possession_v9_standalone.py` | The whole v9 / v9.1 pipeline in one file (needs only numpy and the organisers' loaders) |
+| `possession_v9.py` | v9 (previous submission) |
 | `model_v2.py`, `model_v3.py`, `model_v4.py`, `model_v6.py`, `model_v8.py`, `model_v9.py` | The model (each version builds on the features of the previous ones) |
-| `model_v9_params.json` | Learned weights and decoding costs |
+| `model_v9_1_params.json` | Learned weights and decoding costs of the submission |
+| `model_v9_params.json` | Weights of v9 |
 | `training/` | Conversion of the external data, validation variants, training |
 | `diagnostics/` | Automatic checks on the provided data; they print aggregates only |
 | `possession_v1.py`, `possession_v3.py`, `possession_v4.py`, `possession_v6.py`, `possession_v8.py`, `model_v3_params.json`, `model_v4_params.json`, `model_v6_params.json`, `model_v8_params.json` | Earlier versions, kept for the record |
