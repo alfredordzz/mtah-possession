@@ -62,7 +62,20 @@ Get-FileHash evaluation\results\v10.csv     # 842EA46B1035BDA05A6B708D40E78BBF81
 If the hashes differ, `python diagnostics/compare_submissions.py first.csv second.csv` reports how
 many frames differ (counts only).
 
-### Single-file version
+### Single-file version of the submission
+
+`possession_v10_standalone.py` is the whole v10 in one file, from the raw tracking to the CSV. It
+does not import any of our other scripts: the tracking reader of `cache_atd.py` and every function
+of `possession_v9_standalone.py` that v10 uses are copied into it. It needs only numpy, the weights
+in `model_v9_1_params.json` and `model_v10_seq.npz`, and the organisers' loaders (`games.py`,
+`starter/`, `evaluation/`). On the first run it reads the raw tracking into `cache/` by itself
+(`--rebuild-cache` forces it). It writes `evaluation/results/v10_standalone.csv` (or
+`--out path.csv`), byte-identical to `v10.csv`.
+
+```powershell
+python possession_v10_standalone.py
+Get-FileHash evaluation\results\v10_standalone.csv   # 842EA46B1035BDA05A6B708D40E78BBF8138E6ECBF87C824E06AD7CA4A646A37
+```
 
 `possession_v9_standalone.py` is the same v9 in one file: every function it needs from
 `model_v2.py` ... `model_v9.py` is copied into it, so it runs with only numpy, the weights in
@@ -189,6 +202,7 @@ For reference, the official baseline scores 0.2433 on the full competition match
 |---|---|
 | `cache_atd.py` | Reads the tactical ATD into arrays in metres, with checks against the published numbers |
 | `possession_v10.py` | Produces the submission file (v10) |
+| `possession_v10_standalone.py` | The whole v10 in one file, raw tracking to CSV (byte-identical to `possession_v10.py`) |
 | `possession_v9_1.py` | v9.1 (previous submission) |
 | `possession_v9_standalone.py` | The whole v9 / v9.1 pipeline in one file (needs only numpy and the organisers' loaders) |
 | `possession_v9.py` | v9 (previous submission) |
