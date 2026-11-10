@@ -145,11 +145,19 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("validation_root")
     parser.add_argument("--version", choices=sorted(MODELS), default="v9")
-    parser.add_argument("--out", default=None, help="default: model_<version>_params.json")
+    parser.add_argument("--name", default=None,
+                        help="name written in the params file and used for the default output (default: --version)")
+    parser.add_argument("--transition-window", type=int, default=None,
+                        help="v9 only: frames either side of a change of possession weighted in the team fit "
+                             "(model_v9.py default 25; v9.1 uses 75)")
+    parser.add_argument("--out", default=None, help="default: model_<name>_params.json")
     args = parser.parse_args()
     global M
     M = MODELS[args.version]
-    out = args.out or os.path.join(ROOT, "model_{}_params.json".format(args.version))
+    if args.transition_window is not None:
+        M9.TRANSITION_WINDOW = args.transition_window
+    name = args.name or args.version
+    out = args.out or os.path.join(ROOT, "model_{}_params.json".format(name.replace(".", "_")))
     warnings.filterwarnings("ignore", category=RuntimeWarning)
     t0 = time.time()
 
@@ -181,11 +189,11 @@ def main():
 
     print("\nheld-out spellF1 (mean over games)      " + "  ".join("{:>11}".format(v) for v in VARIANTS))
     print("  baseline (+/-50 frames)               " + "  ".join("{:>11.4f}".format(np.mean(list(base[v].values()))) for v in VARIANTS))
-    print("  {} (switch {:g}, dead {:g})             ".format(args.version, sc, dc) +
+    print("  {} (switch {:g}, dead {:g})             ".format(name, sc, dc) +
           "  ".join("{:>11.4f}".format(np.mean(list(per[v].values()))) for v in VARIANTS))
 
     m = fit([preps[v][n] for v in TRAIN for n in names])
-    payload = {"version": args.version,
+    payload = {"version": name,
                "decode": {"switch_cost": sc, "dead_cost": dc, "temp_dead": 1.0, "temp_team": 1.0},
                "touch": {"dv": M4.TOUCH_DV, "reach": M4.TOUCH_REACH, "smooth": M4.TOUCH_SMOOTH,
                          "control_reach": M4.CONTROL_REACH},

@@ -676,13 +676,14 @@ def tag_team_logit(n, home_name, away_name):
 
 # == 5. main =======================================================================================
 
-def main(out_path=None):
+def main(out_path=None, params_path=None):
     out_path = out_path or OUT_PATH
+    params_path = params_path or PARAMS_PATH
     warnings.filterwarnings("ignore", category=RuntimeWarning)  # all-NaN rows are expected
     n = source_frames()
     data = np.load(CACHE_PATH)
     ball, pos, speed, slot_team = data["ball"], data["pos"], data["speed"], data["slot_team"]
-    params = json.load(open(PARAMS_PATH))
+    params = json.load(open(params_path))
     models = {k: Logistic(v) for k, v in params["models"].items()}
     dec = params["decode"]
     apply_params(params)
@@ -712,6 +713,7 @@ def main(out_path=None):
     # 5: Viterbi per half
     emis = emissions(ld, lt, dec["temp_dead"], dec["temp_team"])
     codes = np.full(n, X, dtype=np.int8)
+    print("model {} from {}".format(params.get("version"), os.path.relpath(params_path, ROOT)))
     print("decoding (switch cost {}, dead cost {})".format(dec["switch_cost"], dec["dead_cost"]))
     for first, last in periods:
         e = emis[first:last + 1].copy()
@@ -761,4 +763,6 @@ def main(out_path=None):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--out", help="output CSV (default evaluation/results/v9_standalone.csv)")
-    main(parser.parse_args().out)
+    parser.add_argument("--params", help="weights file (default model_v9_params.json; v9.1: model_v9_1_params.json)")
+    args = parser.parse_args()
+    main(args.out, args.params and os.path.abspath(args.params))
