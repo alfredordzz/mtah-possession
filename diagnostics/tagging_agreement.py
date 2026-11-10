@@ -107,6 +107,11 @@ def report(codes, events, home, away):
                 w, np.mean(d <= w * FPS), np.mean(d0 <= w * FPS)))
         print("  median distance to the nearest change: transitions {:.1f} s, ordinary frames {:.1f} s".format(
             np.median(d) / FPS, np.median(d0) / FPS))
+        near5 = d <= 5 * FPS
+        if near5.any():
+            off = (pick[near5] - starts[near5]) / FPS
+            print("  signed offset (change minus tagged start) for those within +/-5 s: median {:+.1f} s, "
+                  "change after the tagged start in {:.0%}".format(np.median(off), np.mean(off > 0)))
         team_of = {}
         for e in by_code.get("attacking transition", []):
             t = names.get((e["tags"].get("Team") or "").strip().lower())
@@ -118,27 +123,33 @@ def report(codes, events, home, away):
             print("  of the changes within +/-3 s, the new team is the tagged team in {:.0%} ({} of {})".format(
                 np.mean(ok), int(np.sum(ok)), len(ok)))
 
-    print("\n3. SET PIECES WITH A TEAM: first team in possession in the {} s after the tagged interval".format(AFTER_S))
+    print("\n3. SET PIECES WITH A TEAM (the tagged interval covers the stoppage, the restart and the play after it)")
+    print("  {:<20} {:>5}  {:>22}  {:>22}  {:>22}".format(
+        "type", "inst.", "first team after start", "in-play frames inside", "first team after end"))
+    print("  {:<20} {:>5}  {:>22}  {:>22}  {:>22}".format("", "", "tagged / other / none", "tagged team share",
+                                                            "tagged / other / none"))
     rows = {}
     for e in by_code.get("set pieces", []):
         team = names.get((e["tags"].get("Team") or "").strip().lower())
         kind = (e["tags"].get("Type") or "?").strip()
         if team is None:
             continue
-        a, b = min(n, max(0, e["end_frame"])), min(n, max(0, e["end_frame"]) + AFTER_S * FPS)
-        seg = codes[a:b]
-        first = seg[(seg == pm.H) | (seg == pm.A)]
-        r = rows.setdefault(kind, [0, 0, 0])
-        if len(first) == 0:
-            r[2] += 1
-        elif first[0] == team:
-            r[0] += 1
-        else:
-            r[1] += 1
+        a, b = min(n, max(0, e["start_frame"])), min(n, max(0, e["end_frame"]))
+        r = rows.setdefault(kind, {"n": 0, "start": [0, 0, 0], "end": [0, 0, 0], "in": [0, 0]})
+        r["n"] += 1
+        for key, seg in (("start", codes[a:b]), ("end", codes[b:min(n, b + AFTER_S * FPS)])):
+            first = seg[(seg == pm.H) | (seg == pm.A)]
+            r[key][2 if len(first) == 0 else (0 if first[0] == team else 1)] += 1
+        inside = codes[a:b]
+        alive = inside[(inside == pm.H) | (inside == pm.A)]
+        r["in"][0] += int(np.sum(alive == team))
+        r["in"][1] += len(alive)
     if not rows:
         print("  no set pieces with a team")
-    for kind, (same, other, none) in sorted(rows.items(), key=lambda kv: -sum(kv[1])):
-        print("  {:<24} tagged team {:>3}   other team {:>3}   still dead ball {:>3}".format(kind, same, other, none))
+    for kind, r in sorted(rows.items(), key=lambda kv: -kv[1]["n"]):
+        share = "{:.0%} of {}".format(r["in"][0] / r["in"][1], r["in"][1]) if r["in"][1] else "-"
+        print("  {:<20} {:>5}  {:>22}  {:>22}  {:>22}".format(
+            kind, r["n"], "{} / {} / {}".format(*r["start"]), share, "{} / {} / {}".format(*r["end"])))
 
 
 def main():
