@@ -33,7 +33,8 @@ python cache_atd.py        # reads the tactical ATD once into cache/atd_tactical
 python possession_v11_standalone.py   # writes evaluation/results/v11_standalone.csv and validates it (the submission)
 ```
 
-The submission is v11 (below); v10 stays as the fallback.
+The submission is v11 (below), SHA-256
+`47D4A7D4A9E7424E12DB7C0E12845C0E02AE574FB163CE46439710FCE902CB1A`; v10 stays as the fallback.
 
 v10: `possession_v10.py` runs the single-file pipeline
 (`possession_v9_standalone.py`) with the regression weights in `model_v9_1_params.json` and the
@@ -149,7 +150,7 @@ A single extra network (8 epochs) alone adds only +0.0007 and +0.0043: the gain 
 
 ```powershell
 python possession_v11_standalone.py
-Get-FileHash evaluation\results\v11_standalone.csv
+Get-FileHash evaluation\results\v11_standalone.csv   # 47D4A7D4A9E7424E12DB7C0E12845C0E02AE574FB163CE46439710FCE902CB1A
 ```
 
 Training the networks (JAX, CPU is enough; each takes about 10 to 15 minutes). Training is deterministic:
