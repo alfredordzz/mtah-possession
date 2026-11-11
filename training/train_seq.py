@@ -1,14 +1,19 @@
-"""Train v10's sequence model (bidirectional GRU) on the external validation games.
+"""Train the sequence model (bidirectional GRU) on the external validation games.
 
     python -m pip install "jax[cpu]" optax
-    python training/train_seq.py VALIDATION_ROOT            # writes model_v10_seq.npz
+    python training/train_seq.py VALIDATION_ROOT                                   # v10's network: model_v10_seq.npz
+    python training/train_seq.py VALIDATION_ROOT --seed 1 --epochs 8 --out cache/seq_s1.npz
+
+v11 averages three networks trained exactly like this, with seeds 0, 1 and 2: seed 0 with 12 epochs
+(the v10 network) and seeds 1 and 2 with 8 epochs, as they were validated. training/build_v11_seq.py
+packs the three into model_v11_seq.npz.
 
 Input per frame: v9.1's features (dead-ball judge, team judge without and with the ball, ball seen),
 read every 5th frame (5 Hz) per half. Standardised with the training mean and spread; columns that
 never vary are ignored and values clipped to +/-6 spreads. Model: dense 64 + ReLU, two bidirectional
 GRU layers of 64 units, softmax over H, A, D. Training: the hard variants of the 8 games, windows of
 256 steps, class-balanced cross-entropy, x3 weight within 75 frames of a change of possession (as
-v9.1), Adam 2e-3, 12 epochs, seed 0. Only external data is used. Inference in the submission is plain
+v9.1), Adam 2e-3, 12 epochs and seed 0 by default. Only external data is used. Inference in the submission is plain
 numpy (possession_v9_standalone.seq_emissions), so JAX is needed for training only.
 """
 
@@ -73,9 +78,10 @@ def gru(x, W, U, b):
     xw = x @ W + b
 
     def step(h, xt):
-        zr = jax.nn.sigmoid(xt[:, :2 * HID] + h @ U[:, :2 * HID])
-        z, r = zr[:, :HID], zr[:, HID:]
-        h = (1 - z) * h + z * jnp.tanh(xt[:, 2 * HID:] + (r * h) @ U[:, 2 * HID:])
+        z_r = jax.nn.sigmoid(xt[:, :2 * HID] + h @ U[:, :2 * HID])
+        z, r = z_r[:, :HID], z_r[:, HID:]
+        hh = jnp.tanh(xt[:, 2 * HID:] + (r * h) @ U[:, 2 * HID:])
+        h = (1 - z) * h + z * hh
         return h, h
     _, hs = jax.lax.scan(step, jnp.zeros((x.shape[1], HID)), xw)
     return hs
@@ -93,9 +99,9 @@ def forward(P, x, key=None, train=False):
     return jnp.swapaxes(h, 0, 1) @ P["Wout"] + P["bout"]
 
 
-def train(seqs):
-    rng = np.random.default_rng(SEED)
-    key = jax.random.PRNGKey(SEED)
+def train(seqs, seed=SEED, epochs=EPOCHS):
+    rng = np.random.default_rng(seed)
+    key = jax.random.PRNGKey(seed)
     allx = np.vstack([s[0] for s in seqs])
     mu, sd = allx.mean(0), allx.std(0) + 1e-6
     ally = np.concatenate([s[1] for s in seqs])
@@ -120,7 +126,7 @@ def train(seqs):
         return optax.apply_updates(P, up), st, loss
 
     windows = [(i, s) for i, (x, _, _) in enumerate(seqs) for s in range(0, max(1, len(x) - WIN), WIN // 2)]
-    for ep in range(EPOCHS):
+    for ep in range(epochs):
         rng.shuffle(windows)
         tot, nb = 0.0, 0
         for b in range(0, len(windows) - 15, 16):
@@ -140,8 +146,16 @@ def train(seqs):
 
 
 def main():
-    root = sys.argv[1]
-    out = sys.argv[2] if len(sys.argv) > 2 else os.path.join(os.path.dirname(HERE), "model_v10_seq.npz")
+    import argparse
+    ap = argparse.ArgumentParser(description="train the sequence model on the external games")
+    ap.add_argument("root", help="validation root with the external games (see training/README)")
+    ap.add_argument("out_pos", nargs="?", help=argparse.SUPPRESS)
+    ap.add_argument("--out", help="output .npz (default model_v10_seq.npz in the repository root)")
+    ap.add_argument("--seed", type=int, default=SEED)
+    ap.add_argument("--epochs", type=int, default=EPOCHS)
+    a = ap.parse_args()
+    root = a.root
+    out = a.out or a.out_pos or os.path.join(os.path.dirname(HERE), "model_v10_seq.npz")
     paths = TF.game_paths(root)
     seqs = []
     for v in TF.TRAIN:
@@ -149,7 +163,7 @@ def main():
             p = TF.prepare(TF.load_npz(path))
             seqs += halves(p, feats(p))
             print("prepared", v, name, flush=True)
-    P, mu, sd = train(seqs)
+    P, mu, sd = train(seqs, a.seed, a.epochs)
     np.savez(out, mu=mu, sd=sd, **{k: np.asarray(v) for k, v in P.items()})
     print("wrote", out)
 
