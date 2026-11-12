@@ -236,11 +236,11 @@ For reference, the official baseline scores 0.2433 on the full competition match
 
 ## Interactive explainer (docs/)
 
-`docs/index.html` is a self-contained page that shows how v10 decides, step by step: two 90 s stretches
+`docs/index.html` is a self-contained page that shows how the submission (v11) decides, step by step: two 90 s stretches
 of real external matches (IDSSE, CC BY 4.0, scored with models trained without them), a synthetic play,
 a lab with controlled experiments and 24 stress tests on the 8 external games, and a tab with
-descriptive statistics of v10's own answers for the competition match (aggregates from
-`diagnostics/describe_submission.py`; no ground truth and no other data about the match). Open it in a browser, or publish it with GitHub Pages
+descriptive statistics of v11's own answers for the competition match (aggregates from
+`diagnostics/describe_submission.py`; no ground truth and no other data about the match), and a tab on what changed from v10 to v11 and the ideas tested afterwards. Open it in a browser, or publish it with GitHub Pages
 (Settings > Pages > Deploy from a branch > `main` / `/docs`) once the repository is public.
 
 ## Repository layout
