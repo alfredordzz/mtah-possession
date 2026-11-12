@@ -70,8 +70,20 @@ def profile(codes, mask_codes=None):
             if a != b:
                 tr[a + b] = trans[a + b] / tot if tot else 0.0
     nw = sum(words.values())
+    live = [(t[1] - t[0]) / FPS for t in toks if t[2] != "M"]
+    graded_codes = codes[(mask_codes if mask_codes is not None else codes) != 3]
     return {"motifs_per90": {k: v * per90 for k, v in m.items()}, "trans": tr,
-            "words": {k: v / nw for k, v in words.items()} if nw else {}, "letters_per90": len(toks) * per90}
+            "words": {k: v / nw for k, v in words.items()} if nw else {}, "letters_per90": len(toks) * per90,
+            "dead_share": float(np.mean(graded_codes == 2)) if len(graded_codes) else 0.0,
+            "median_poss_s": float(np.median(live)) if live else 0.0}
+
+
+def flat(p):
+    """The scalar measures the quality gate checks, from a profile()."""
+    out = {"letters_per90": p["letters_per90"], "dead_share": p["dead_share"], "median_poss_s": p["median_poss_s"]}
+    out.update({"motif_" + k: v for k, v in p["motifs_per90"].items()})
+    out.update({"after_" + k: v for k, v in p["trans"].items()})
+    return out
 
 
 def main():
