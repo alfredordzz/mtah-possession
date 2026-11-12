@@ -153,6 +153,24 @@ python possession_v11_standalone.py
 Get-FileHash evaluation\results\v11_standalone.csv   # 47D4A7D4A9E7424E12DB7C0E12845C0E02AE574FB163CE46439710FCE902CB1A
 ```
 
+Before submitting, a quality gate checks that the file looks like a plausible match (no ground
+truth involved). `--quality` also writes the Phred-like quality of each possession to a separate
+file (`evaluation/results/v11_quality.csv`, git-ignored like every labels file); the submission CSV
+and its hash do not change.
+
+```powershell
+python possession_v11_standalone.py --quality
+python diagnostics/possession_dna.py     # ends with PASS or FAIL
+```
+
+The gate fails when 2 or more of 14 "DNA" measures of the label sequence (letters per 90 minutes,
+motifs, transitions, dead-ball share, median possession) fall outside what v11 writes on the
+external games, or when the share of possessions with quality Q < 5 is above its external maximum.
+Calibrated on 25 kinds of deliberate damage to the external tracking: no false alarm on 74
+harmless runs, 22 of 63 harmful runs caught (every run without the ball). It is a check that the
+pipeline did not break, not a guarantee of quality: moderate damage still produces a
+plausible-looking match.
+
 Training the networks (JAX, CPU is enough; each takes about 10 to 15 minutes). Training is deterministic:
 retraining seed 1 with the command below gave a network byte-identical to the one in `model_v11_seq.npz`.
 

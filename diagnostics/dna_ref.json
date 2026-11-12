@@ -316,6 +316,8 @@
     0.7297619047619048
    ]
   },
-  "note": "bands: v11 held out on the 8 external games (smooth_hard) at normal pace, 20% slower and 25% faster, widened by half their width on each side; FAIL if 2 or more measures fall outside"
+  "note": "bands: v11 held out on the 8 external games (smooth_hard) at normal pace, 20% slower and 25% faster, widened by half their width on each side; FAIL if 2 or more measures fall outside",
+  "low_q_max": 0.365625,
+  "note_quality": "quality alarm: share of possessions with Phred Q < 5 above the highest value of v11 on the 8 external games at normal, 20% slower and 25% faster pace; with the DNA bands, on 25 damage conditions it caught 22 of 63 harmful runs with no false alarm on 74 harmless ones"
  }
 }
