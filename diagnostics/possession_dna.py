@@ -13,6 +13,11 @@ ball). The script counts:
 and prints them next to the same numbers on the 8 external games (diagnostics/dna_ref.json): their
 true labels and what v11 predicts there, held out. Like describe_submission.py, it says what the
 file answered, not whether it is right.
+
+It ends with a quality gate: PASS, or FAIL naming the measures out of range. The bands come from
+v11 on the external games at normal, slower and faster pace; on 25 kinds of deliberate damage to
+the tracking it raised no false alarm on harmless damage and failed the broken pipelines (no ball),
+but it does not catch moderate damage: a degraded model still writes a plausible-looking match.
 """
 
 import json
@@ -113,6 +118,14 @@ def main():
     for w, s in sorted(p["words"].items(), key=lambda x: -x[1])[:8]:
         t = ref["truth"]["words"].get(w, [0, 0, 0])
         print("  {}   {:>5.1%}   externos: verdad {}, v11 {:.1%}".format(w, s, rng(t, "{:.1%}"), ref["v11"]["words"].get(w, [0, 0, 0])[1]))
+
+    g = ref["gate"]
+    out = [(k, v, g["bands"][k]) for k, v in flat(p).items() if not (g["bands"][k][0] <= v <= g["bands"][k][1])]
+    print("\n4. QUALITY GATE")
+    for k, v, b in out:
+        print("  fuera de rango: {:<22} {:.3f}   permitido {:.3f} a {:.3f}".format(k, v, b[0], b[1]))
+    print("  {}  ({} de {} medidas fuera de rango; falla con {} o más)".format(
+        "FAIL" if len(out) >= g["k"] else "PASS", len(out), len(g["bands"]), g["k"]))
 
 
 if __name__ == "__main__":
