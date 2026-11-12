@@ -240,7 +240,7 @@ For reference, the official baseline scores 0.2433 on the full competition match
 of real external matches (IDSSE, CC BY 4.0, scored with models trained without them), a synthetic play,
 a lab with controlled experiments and 24 stress tests on the 8 external games, and a tab with
 descriptive statistics of v11's own answers for the competition match (aggregates from
-`diagnostics/describe_submission.py`; no ground truth and no other data about the match), and a tab on what changed from v10 to v11 and the ideas tested afterwards. Open it in a browser, or publish it with GitHub Pages
+`diagnostics/describe_submission.py`; no ground truth and no other data about the match), and a tab on what changed from v10 to v11 and the ideas tested afterwards. A seventh tab reads each match as a string of letters (L home, V away, M dead ball) and aligns the model's string with the true one, like two DNA sequences, to type its errors and count recurring patterns; `python diagnostics/possession_dna.py` prints the same aggregates for a submission file. Open it in a browser, or publish it with GitHub Pages
 (Settings > Pages > Deploy from a branch > `main` / `/docs`) once the repository is public.
 
 ## Repository layout
