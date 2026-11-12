@@ -1,6 +1,6 @@
 """Possession timeline of a submission, as a local HTML page. No ground truth is read.
 
-    python diagnostics/possession_timeline.py                          # evaluation/results/v10.csv
+    python diagnostics/possession_timeline.py                          # evaluation/results/v11_standalone.csv
     python diagnostics/possession_timeline.py evaluation/results/v9_1.csv
 
 Writes evaluation/reports/timeline_<file>.html (the reports folder is git-ignored, so the page
@@ -113,7 +113,7 @@ def half_block(name, c):
 
 
 def main():
-    path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "evaluation", "results", "v10.csv")
+    path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "evaluation", "results", "v11_standalone.csv")
     codes = pm.label_codes(pm.read_label_csv(path))
     blocks = half_video_blocks(GAME)
     base = os.path.splitext(os.path.basename(path))[0]
