@@ -850,9 +850,45 @@ def seq_emissions(path, dall, tn, tb, seen, periods):
     return np.log(prob / len(nets) + 1e-12)
 
 
+# == quality (optional, does not change the submission) ===========================================
+
+PHRED_PATH = os.path.join(ROOT, "model_v11_phred.json")
+
+
+def write_quality(path, codes, e_judges, e_nets):
+    """Phred-like quality of each possession written (--quality): how likely it is to match a real
+    possession, from how clear the judges' and the networks' evidence was over it. A separate file;
+    the submission CSV and its hash are unchanged."""
+    ph = json.load(open(PHRED_PATH))
+    e = (e_judges + e_nets) / 2
+    P = np.exp(e - e.max(1, keepdims=True)); P /= P.sum(1, keepdims=True)
+    a_j, a_n = e_judges.argmax(1), e_nets.argmax(1)
+    ch = np.flatnonzero(np.diff(codes)) + 1
+    rows = []
+    for a, b in zip(np.r_[0, ch], np.r_[ch, len(codes)]):
+        k = int(codes[a])
+        if k not in (H, A):
+            continue
+        pk = P[a:b, k]; other = np.delete(P[a:b], k, axis=1).max(1)
+        edge = np.r_[P[max(a - 5, 0):a + 5, k], P[max(b - 5, 0):b + 5, k]]
+        rows.append((a, b, k, [pk.mean(), np.percentile(pk, 10), (pk - other).mean(), np.log((b - a) / FPS),
+                               np.mean(a_j[a:b] == k), np.mean(a_n[a:b] == k), np.abs(np.diff(edge)).mean()]))
+    m = ph["model"]
+    Z = (np.array([r[3] for r in rows]) - np.array(m["mu"])) / np.array(m["sd"])
+    p_ok = 1 / (1 + np.exp(-(m["beta"][0] + Z @ np.array(m["beta"][1:]))))
+    q = -10 * np.log10(np.clip(1 - p_ok, 1e-4, 1))
+    with open(path, "w", newline="") as fh:
+        fh.write("start_frame,end_frame,team,duration_s,quality_q\n")
+        for (a, b, k, _), qq in zip(rows, q):
+            fh.write("{},{},{},{:.2f},{:.1f}\n".format(a, b - 1, "H" if k == H else "A", (b - a) / FPS, qq))
+    lo = ph["low_q_share_external"]
+    print("quality: {} possessions, median Q {:.1f}, Q < 5 on {:.0%} (external games {:.0%} to {:.0%}); wrote {}".format(
+        len(q), np.median(q), np.mean(q < 5), lo[0], lo[2], os.path.relpath(path, ROOT)))
+
+
 # == 6-7. main ====================================================================================
 
-def main(out_path=None, rebuild_cache=False):
+def main(out_path=None, rebuild_cache=False, quality_path=None):
     out_path = out_path or OUT_PATH
     warnings.filterwarnings("ignore", category=RuntimeWarning)  # all-NaN rows are expected
     if rebuild_cache or not os.path.exists(CACHE_PATH):
@@ -888,8 +924,9 @@ def main(out_path=None, rebuild_cache=False):
     lt = lt + TAG_LOGIT * tags
 
     # 5-6: sequence model, averaged (in log space) with the judges
-    emis = emissions(ld, lt, dec["temp_dead"], dec["temp_team"])
-    emis = (emis + seq_emissions(SEQ_PATH, dall, tn, tb, seen, periods)) / 2
+    emis_judges = emissions(ld, lt, dec["temp_dead"], dec["temp_team"])
+    emis_nets = seq_emissions(SEQ_PATH, dall, tn, tb, seen, periods)
+    emis = (emis_judges + emis_nets) / 2
     print("model v11 = judges from {} + average of {} networks from {}, averaged".format(
         os.path.relpath(PARAMS_PATH, ROOT), len({k.split("__")[0] for k in np.load(SEQ_PATH).files}),
         os.path.relpath(SEQ_PATH, ROOT)))
@@ -940,11 +977,16 @@ def main(out_path=None, rebuild_cache=False):
           "(validation games: {})".format(*np.nanpercentile(vh[graded], [10, 90]),
                                           *np.nanpercentile(va[graded], [10, 90]), REVERSAL_RANGE))
     print("\nwrote {}".format(os.path.relpath(out_path, ROOT)))
+    if quality_path:
+        write_quality(quality_path, codes, emis_judges, emis_nets)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--out", help="output CSV (default evaluation/results/v11_standalone.csv)")
     parser.add_argument("--rebuild-cache", action="store_true", help="re-read the raw tracking even if cache/ exists")
+    parser.add_argument("--quality", nargs="?", const=os.path.join(ROOT, "evaluation", "results", "v11_quality.csv"),
+                        help="also write the Phred-like quality of each possession (default evaluation/results/v11_quality.csv); "
+                             "the submission CSV is unchanged")
     args = parser.parse_args()
-    main(args.out and os.path.abspath(args.out), args.rebuild_cache)
+    main(args.out and os.path.abspath(args.out), args.rebuild_cache, args.quality and os.path.abspath(args.quality))

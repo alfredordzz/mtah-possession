@@ -2,6 +2,7 @@
 
     python diagnostics/possession_dna.py                          # evaluation/results/v11_standalone.csv
     python diagnostics/possession_dna.py evaluation/results/v10_standalone.csv
+    python diagnostics/possession_dna.py evaluation/results/v11_standalone.csv --quality evaluation/results/v11_quality.csv
 
 Each run of the same label becomes one letter: L (home has the ball), V (away has the ball), M (dead
 ball). The script counts:
@@ -18,6 +19,10 @@ It ends with a quality gate: PASS, or FAIL naming the measures out of range. The
 v11 on the external games at normal, slower and faster pace; on 25 kinds of deliberate damage to
 the tracking it raised no false alarm on harmless damage and failed the broken pipelines (no ball),
 but it does not catch moderate damage: a degraded model still writes a plausible-looking match.
+With the quality file written by possession_v11_standalone.py --quality (read by default when it
+exists), the gate also fails when too many possessions have a Phred Q below 5: a damaged pipeline
+makes the model less sure of itself. Together they caught 22 of 63 harmful runs (all 8 without the
+ball, 5 of 8 with 80% less ball, 3 of 8 played backwards) with no false alarm on 74 harmless ones.
 """
 
 import json
@@ -96,7 +101,13 @@ def main():
     for sub in ("starter", "evaluation"):
         sys.path.insert(0, os.path.join(ROOT, sub))
     import possession_metrics as pm  # noqa: E402
-    path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "evaluation", "results", "v11_standalone.csv")
+    import argparse
+    ap = argparse.ArgumentParser(description="DNA of a submission file and the quality gate")
+    ap.add_argument("csv", nargs="?", default=os.path.join(ROOT, "evaluation", "results", "v11_standalone.csv"))
+    ap.add_argument("--quality", default=os.path.join(ROOT, "evaluation", "results", "v11_quality.csv"),
+                    help="per-possession quality file from possession_v11_standalone.py --quality (used if it exists)")
+    a = ap.parse_args()
+    path = a.csv
     codes = pm.label_codes(pm.read_label_csv(path))
     ref = json.load(open(os.path.join(ROOT, "diagnostics", "dna_ref.json")))
     p = profile(codes)
@@ -124,8 +135,17 @@ def main():
     print("\n4. QUALITY GATE")
     for k, v, b in out:
         print("  fuera de rango: {:<22} {:.3f}   permitido {:.3f} a {:.3f}".format(k, v, b[0], b[1]))
-    print("  {}  ({} de {} medidas fuera de rango; falla con {} o más)".format(
-        "FAIL" if len(out) >= g["k"] else "PASS", len(out), len(g["bands"]), g["k"]))
+    fail = len(out) >= g["k"]
+    print("  ADN: {} de {} medidas fuera de rango (falla con {} o más)".format(len(out), len(g["bands"]), g["k"]))
+    if os.path.exists(a.quality):
+        qs = np.array([float(r.split(",")[4]) for r in open(a.quality).read().splitlines()[1:] if r])
+        low = float(np.mean(qs < 5)) if len(qs) else 0.0
+        print("  calidad: {:.0%} de las posesiones con Q < 5 (falla arriba de {:.0%}); archivo {}".format(
+            low, g["low_q_max"], os.path.relpath(a.quality, ROOT)))
+        fail = fail or low > g["low_q_max"]
+    else:
+        print("  calidad: sin archivo de calidad (corre possession_v11_standalone.py --quality para incluirla)")
+    print("  {}".format("FAIL" if fail else "PASS"))
 
 
 if __name__ == "__main__":
