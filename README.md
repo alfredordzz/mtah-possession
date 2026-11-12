@@ -30,10 +30,13 @@ The match data is not in this repository; unpack the bundle into `data/` as desc
 
 ```bash
 python cache_atd.py        # reads the tactical ATD once into cache/atd_tactical.npz (+ sanity checks)
-python possession_v10.py   # writes evaluation/results/v10.csv and validates it (the submission)
+python possession_v11_standalone.py   # writes evaluation/results/v11_standalone.csv and validates it (the submission)
 ```
 
-The submission is v10. `possession_v10.py` runs the single-file pipeline
+The submission is v11 (below), SHA-256
+`47D4A7D4A9E7424E12DB7C0E12845C0E02AE574FB163CE46439710FCE902CB1A`; v10 stays as the fallback.
+
+v10: `possession_v10.py` runs the single-file pipeline
 (`possession_v9_standalone.py`) with the regression weights in `model_v9_1_params.json` and the
 sequence model in `model_v10_seq.npz`, all in numpy. The output is deterministic: the same data and
 code produce the same file, SHA-256
@@ -104,7 +107,7 @@ python possession_v9_standalone.py --params model_v9_1_params.json --out evaluat
 # retrain: python training/train_final.py VALIDATION_ROOT --version v9 --name v9.1 --transition-window 75
 ```
 
-### v10 (the submission): v9.1 averaged with a sequence model
+### v10 (fallback): v9.1 averaged with a sequence model
 
 v10 keeps v9.1 and adds a bidirectional GRU (two layers, 64 units per direction, 135k parameters,
 `model_v10_seq.npz`) that reads the same per-frame features at 5 Hz, forwards and backwards over each
@@ -124,6 +127,41 @@ inference is plain numpy inside `possession_v9_standalone.py`.
 ```powershell
 python possession_v10.py            # writes evaluation/results/v10.csv
 python diagnostics/feature_shift.py # how far the match's features fall outside the training range
+```
+
+### v11 (the submission): v10 with the average of three networks
+
+v11 is v10 with one change: instead of one sequence network it averages the probabilities of three,
+trained in exactly the same way on the same external data with different random seeds (seed 0 is the
+v10 network, 12 epochs; seeds 1 and 2 were trained with 8 epochs, as they were validated). The three
+are packed in `model_v11_seq.npz` (prefixes `n0__`, `n1__`, `n2__`, each with its own input mean and
+spread). Everything else (v9.1 judges, the average with them, the Viterbi editor 16 / 35) is unchanged.
+`possession_v11_standalone.py` is the whole pipeline in one file, like the v10 one; with only the v10
+network in the weights file it gives the same CSV as v10.
+
+| Check (spellF1, mean) | v10 | v11 | v11 better on |
+|---|---|---|---|
+| 8 external games x 4 variants, leave one game out | 0.7052 | 0.7178 (+0.0126) | 26 / 32 |
+| same, variants rebuilt with seed +1000 | | +0.0132 | 28 / 32 |
+| same, variants rebuilt with seed +2000 | | +0.0132 | 24 / 32 |
+| 20 SkillCorner games (other provider, other labels), trained on the 8 | 0.4559 | 0.4662 (+0.0103) | 16 / 20 |
+
+A single extra network (8 epochs) alone adds only +0.0007 and +0.0043: the gain comes from averaging.
+
+```powershell
+python possession_v11_standalone.py
+Get-FileHash evaluation\results\v11_standalone.csv   # 47D4A7D4A9E7424E12DB7C0E12845C0E02AE574FB163CE46439710FCE902CB1A
+```
+
+Training the networks (JAX, CPU is enough; each takes about 10 to 15 minutes). Training is deterministic:
+retraining seed 1 with the command below gave a network byte-identical to the one in `model_v11_seq.npz`.
+
+```bash
+pip install "jax[cpu]" optax
+python training/train_seq.py validation                                   # seed 0, 12 epochs -> model_v10_seq.npz
+python training/train_seq.py validation --seed 1 --epochs 8 --out cache/seq_s1.npz
+python training/train_seq.py validation --seed 2 --epochs 8 --out cache/seq_s2.npz
+python training/build_v11_seq.py model_v10_seq.npz cache/seq_s1.npz cache/seq_s2.npz   # -> model_v11_seq.npz
 ```
 
 ## Reproducing the training (external data only)
@@ -178,7 +216,7 @@ each scored by a model that never saw it:
 | v8 | 0.675 | 0.656 | 0.635 | 0.620 |
 | v9 | 0.698 | 0.678 | 0.655 | 0.635 |
 | v9.1 | 0.704 | 0.685 | 0.662 | 0.641 |
-| **v10 (this submission)** | **0.727** | **0.721** | **0.698** | **0.674** |
+| v10 | 0.727 | 0.721 | 0.698 | 0.674 |
 
 v6 adds the ball-flight features to v4 (higher than v4 on 30 of the 32 match x variant pairs); v8
 adds team shape and counter-press to v6 (higher on 28 of 32, and on all 8 matches of the
@@ -210,7 +248,9 @@ descriptive statistics of v10's own answers for the competition match (aggregate
 | Path | Purpose |
 |---|---|
 | `cache_atd.py` | Reads the tactical ATD into arrays in metres, with checks against the published numbers |
-| `possession_v10.py` | Produces the submission file (v10) |
+| `possession_v11_standalone.py` | The submission (v11) in one file, raw tracking to CSV |
+| `model_v11_seq.npz` | The three networks of v11 (prefixes `n0__`, `n1__`, `n2__`) |
+| `possession_v10.py` | v10 (fallback) |
 | `possession_v10_standalone.py` | The whole v10 in one file, raw tracking to CSV (byte-identical to `possession_v10.py`) |
 | `possession_v9_1.py` | v9.1 (previous submission) |
 | `possession_v9_standalone.py` | The whole v9 / v9.1 pipeline in one file (needs only numpy and the organisers' loaders) |
