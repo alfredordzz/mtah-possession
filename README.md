@@ -33,7 +33,8 @@ python cache_atd.py        # reads the tactical ATD once into cache/atd_tactical
 python possession_v12_standalone.py   # writes evaluation/results/v12_standalone.csv and validates it (the submission)
 ```
 
-The submission is v12 (below; SHA-256 to be confirmed on the match data). v11 stays as the fallback, SHA-256
+The submission is v12 (below), SHA-256
+`5D36670AA83E509255C64603F8F2E5160FAD789EA796F59ACA0EC541B28C7FEE`; it passes the quality gate. v11 stays as the fallback, SHA-256
 `47D4A7D4A9E7424E12DB7C0E12845C0E02AE574FB163CE46439710FCE902CB1A`.
 
 v10: `possession_v10.py` runs the single-file pipeline
@@ -152,7 +153,7 @@ gave +0.0014 at normal pace and -0.0005 when slower, so the gain comes from the 
 
 ```powershell
 python possession_v12_standalone.py --quality
-Get-FileHash evaluation\results\v12_standalone.csv
+Get-FileHash evaluation\results\v12_standalone.csv   # 5D36670AA83E509255C64603F8F2E5160FAD789EA796F59ACA0EC541B28C7FEE
 python diagnostics/possession_dna.py evaluation/results/v12_standalone.csv --quality evaluation/results/v12_quality.csv
 ```
 
