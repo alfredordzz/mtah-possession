@@ -30,7 +30,8 @@ import warnings
 
 import numpy as np
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
+HERE = os.path.dirname(os.path.abspath(__file__))   # previous_versions/
+ROOT = os.path.dirname(HERE)                          # repository root (data, cache, starter, evaluation)
 for sub in ("", "starter", "evaluation"):
     sys.path.insert(0, os.path.join(ROOT, sub))
 
@@ -40,7 +41,7 @@ from load_smart_tagging import load as load_tags  # noqa: E402
 import possession_metrics as pm  # noqa: E402
 
 CACHE_PATH = os.path.join(ROOT, "cache", "atd_tactical.npz")
-PARAMS_PATH = os.path.join(ROOT, "model_v9_params.json")
+PARAMS_PATH = os.path.join(HERE, "model_v9_params.json")
 OUT_PATH = os.path.join(ROOT, "evaluation", "results", "v9_standalone.csv")
 
 H, A, D, X = 0, 1, 2, 3

@@ -17,7 +17,7 @@ import warnings
 import numpy as np
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repository root
-for sub in ("", "starter"):
+for sub in ("", "previous_versions", "starter"):
     sys.path.insert(0, os.path.join(ROOT, sub))
 from games import GAME, GAMES, half_video_blocks, require  # noqa: E402
 from baseline import team_names  # noqa: E402
@@ -30,7 +30,7 @@ def main():
     warnings.filterwarnings("ignore", category=RuntimeWarning)
     z = np.load(os.path.join(ROOT, "cache", "atd_tactical.npz"))
     ball, pos, speed, st = z["ball"], z["pos"], z["speed"], z["slot_team"]
-    params = json.load(open(os.path.join(ROOT, "model_v4_params.json")))
+    params = json.load(open(os.path.join(ROOT, "previous_versions", "model_v4_params.json")))
     for k, v in params.get("touch", {}).items():
         setattr(M, {"dv": "TOUCH_DV", "reach": "TOUCH_REACH", "smooth": "TOUCH_SMOOTH",
                     "control_reach": "CONTROL_REACH"}[k], int(v) if k == "smooth" else v)

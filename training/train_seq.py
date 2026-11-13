@@ -1,12 +1,12 @@
 """Train the sequence model (bidirectional GRU) on the external validation games.
 
     python -m pip install "jax[cpu]" optax
-    python training/train_seq.py VALIDATION_ROOT                                   # v10's network: model_v10_seq.npz
+    python training/train_seq.py VALIDATION_ROOT                                   # v10's network: previous_versions/model_v10_seq.npz
     python training/train_seq.py VALIDATION_ROOT --seed 1 --epochs 8 --out cache/seq_s1.npz
 
 v11 averages three networks trained exactly like this, with seeds 0, 1 and 2: seed 0 with 12 epochs
 (the v10 network) and seeds 1 and 2 with 8 epochs, as they were validated. training/build_v11_seq.py
-packs the three into model_v11_seq.npz.
+packs the three into previous_versions/model_v11_seq.npz.
 
 Input per frame: v9.1's features (dead-ball judge, team judge without and with the ball, ball seen),
 read every 5th frame (5 Hz) per half. Standardised with the training mean and spread; columns that
@@ -163,13 +163,13 @@ def main():
     ap = argparse.ArgumentParser(description="train the sequence model on the external games")
     ap.add_argument("root", help="validation root with the external games (see training/README)")
     ap.add_argument("out_pos", nargs="?", help=argparse.SUPPRESS)
-    ap.add_argument("--out", help="output .npz (default model_v10_seq.npz in the repository root)")
+    ap.add_argument("--out", help="output .npz (default previous_versions/model_v10_seq.npz)")
     ap.add_argument("--seed", type=int, default=SEED)
     ap.add_argument("--epochs", type=int, default=EPOCHS)
     ap.add_argument("--tempos", default="", help="comma-separated tempo copies added to the training data, e.g. 0.8,1.25 (v12)")
     a = ap.parse_args()
     root = a.root
-    out = a.out or a.out_pos or os.path.join(os.path.dirname(HERE), "model_v10_seq.npz")
+    out = a.out or a.out_pos or os.path.join(os.path.dirname(HERE), "previous_versions", "model_v10_seq.npz")
     paths = TF.game_paths(root)
     seqs = []
     for v in TF.TRAIN:

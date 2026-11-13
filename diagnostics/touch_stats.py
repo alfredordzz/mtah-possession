@@ -15,6 +15,7 @@ import numpy as np
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repository root
 sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.join(ROOT, "previous_versions"))  # older versions
 import model_v2 as M2  # noqa: E402
 import model_v4 as M4  # noqa: E402
 

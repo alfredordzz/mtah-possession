@@ -21,6 +21,7 @@ import numpy as np
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.join(ROOT, "previous_versions"))  # older versions
 import possession_v9_standalone as S  # noqa: E402
 
 NAMES = ([f"pausa_{i}" for i in range(34)] + [f"equipo_sin_balon_{i}" for i in range(66)]

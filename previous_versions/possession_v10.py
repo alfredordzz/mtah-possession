@@ -15,7 +15,7 @@ import os
 import possession_v9_standalone as S
 
 PARAMS_PATH = os.path.join(S.ROOT, "model_v9_1_params.json")
-SEQ_PATH = os.path.join(S.ROOT, "model_v10_seq.npz")
+SEQ_PATH = os.path.join(S.HERE, "model_v10_seq.npz")
 OUT_PATH = os.path.join(S.ROOT, "evaluation", "results", "v10.csv")
 
 

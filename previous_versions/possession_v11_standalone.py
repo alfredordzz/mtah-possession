@@ -1,16 +1,20 @@
-"""v10 in a single file: possession for the competition match, from the raw tracking to the CSV.
+"""v11 in a single file: possession for the competition match, from the raw tracking to the CSV.
 
-    python possession_v10_standalone.py                  # writes evaluation/results/v10_standalone.csv
-    python possession_v10_standalone.py --out BAR-ATH.csv
-    python possession_v10_standalone.py --rebuild-cache  # re-read the raw tracking even if cached
+    python possession_v11_standalone.py                  # writes evaluation/results/v11_standalone.csv
+    python possession_v11_standalone.py --out BAR-ATH.csv
+    python possession_v11_standalone.py --rebuild-cache  # re-read the raw tracking even if cached
 
-Same model and same output as possession_v10.py (the CSV is byte-identical), without any of our
-earlier scripts: what it needed from cache_atd.py and possession_v9_standalone.py is copied here,
-in the order the pipeline uses it. Only inference: training stays in training/.
+v11 is v10 with one change: the sequence model is the average of three networks instead of one. The
+three are trained identically on the 8 external games and differ only in their random seed (0, 1, 2);
+their probabilities are averaged frame by frame before the usual 50/50 average with the judges. Every
+other step (clues, judges, Smart Tagging, Viterbi) is the same code and the same numbers as v10.
+Validated on external data only: +0.013 spellF1 over v10 on 8 games x 4 variants (26/32), repeated
+with two other noise seeds (28/32, 24/32), and on 20 SkillCorner games (+0.010, 16/20).
 
 Needs only numpy and
     model_v9_1_params.json       the two judges and the touch/flight thresholds (8 external games)
-    model_v10_seq.npz            the sequence model's weights and input scaling (same 8 games)
+    model_v11_seq.npz            the three networks' weights and input scaling (same 8 games);
+                                 built with training/train_seq.py and training/build_v11_seq.py
     games.py, starter/, evaluation/   the organisers' loaders and checks, unchanged
     data/                        the provided tracking, metadata and Smart Tagging
 The first run reads the raw tracking once into cache/atd_tactical.npz (a minute or two); later runs
@@ -24,7 +28,8 @@ Pipeline
     2. dead-ball judge      player speeds + ball position/speed + ball-gap context -> logit P(D)
     3. team judge           positions, touches, flights, shape, counter-press, reversal -> logit P(H)
     4. Smart Tagging        +/-0.25 on the team logit where a tagged phase names a team
-    5. sequence model       bidirectional GRU at 5 Hz over the same 168 features -> log P(H, A, D)
+    5. sequence model       three bidirectional GRUs at 5 Hz over the same 168 features; their
+                            probabilities averaged -> log P(H, A, D)
     6. average              (judges + sequence model) / 2, in log-probability, frame by frame
     7. Viterbi per half     switch cost H<->A 16, dead cost 35; D forced before the tagged kickoff
 """
@@ -38,7 +43,8 @@ import warnings
 
 import numpy as np
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
+HERE = os.path.dirname(os.path.abspath(__file__))   # previous_versions/
+ROOT = os.path.dirname(HERE)                          # repository root (data, cache, starter, evaluation)
 for sub in ("", "starter", "evaluation"):
     sys.path.insert(0, os.path.join(ROOT, sub))
 
@@ -49,8 +55,8 @@ import possession_metrics as pm  # noqa: E402
 
 CACHE_PATH = os.path.join(ROOT, "cache", "atd_tactical.npz")
 PARAMS_PATH = os.path.join(ROOT, "model_v9_1_params.json")
-SEQ_PATH = os.path.join(ROOT, "model_v10_seq.npz")
-OUT_PATH = os.path.join(ROOT, "evaluation", "results", "v10_standalone.csv")
+SEQ_PATH = os.path.join(HERE, "model_v11_seq.npz")
+OUT_PATH = os.path.join(ROOT, "evaluation", "results", "v11_standalone.csv")
 
 H, A, D, X = 0, 1, 2, 3
 FPS = 25
@@ -821,27 +827,69 @@ def seq_log_probs(P, x):
 
 def seq_emissions(path, dall, tn, tb, seen, periods):
     """Per-frame log-probabilities from the sequence model, frames outside the periods left at 0.
-    Inputs are standardised with the training mean and spread; columns that never varied in training
-    are ignored and every value is clipped to +/-6 spreads, so unusual values cannot saturate it."""
+    The file holds several networks (prefixes n0__, n1__, ...); each one runs on its own standardised
+    input (training mean and spread; columns that never varied in training ignored; values clipped to
+    +/-6 spreads) and their probabilities are averaged."""
     z = np.load(path)
-    P = {k: z[k].astype(np.float64) for k in z.files if k not in ("mu", "sd")}
-    mu, sd = z["mu"].astype(np.float64), z["sd"].astype(np.float64)
+    nets = sorted({k.split("__")[0] for k in z.files})
     s = seen.astype(np.float32)[:, None]
     X = np.hstack([dall.astype(np.float32), tn.astype(np.float32), tb.astype(np.float32) * s, s])
-    e = np.zeros((len(X), 3))
-    for first, last in periods:
-        idx = np.arange(first, last + 1, SEQ_STEP)
-        x = np.clip((X[idx].astype(np.float64) - mu) / sd, -6.0, 6.0)
-        x[:, sd < 1e-3] = 0.0
-        lp = seq_log_probs(P, x.astype(np.float32).astype(np.float64))
-        j = np.minimum(np.round((np.arange(first, last + 1) - first) / SEQ_STEP).astype(int), len(lp) - 1)
-        e[first:last + 1] = lp[j]
-    return e
+    prob = np.zeros((len(X), 3))
+    for net in nets:
+        P = {k.split("__", 1)[1]: z[k].astype(np.float64) for k in z.files
+             if k.startswith(net + "__") and k.split("__", 1)[1] not in ("mu", "sd")}
+        mu, sd = z[net + "__mu"].astype(np.float64), z[net + "__sd"].astype(np.float64)
+        e = np.zeros((len(X), 3))
+        for first, last in periods:
+            idx = np.arange(first, last + 1, SEQ_STEP)
+            x = np.clip((X[idx].astype(np.float64) - mu) / sd, -6.0, 6.0)
+            x[:, sd < 1e-3] = 0.0
+            lp = seq_log_probs(P, x.astype(np.float32).astype(np.float64))
+            j = np.minimum(np.round((np.arange(first, last + 1) - first) / SEQ_STEP).astype(int), len(lp) - 1)
+            e[first:last + 1] = lp[j]
+        prob += np.exp(e)
+    return np.log(prob / len(nets) + 1e-12)
+
+
+# == quality (optional, does not change the submission) ===========================================
+
+PHRED_PATH = os.path.join(ROOT, "model_v11_phred.json")
+
+
+def write_quality(path, codes, e_judges, e_nets):
+    """Phred-like quality of each possession written (--quality): how likely it is to match a real
+    possession, from how clear the judges' and the networks' evidence was over it. A separate file;
+    the submission CSV and its hash are unchanged."""
+    ph = json.load(open(PHRED_PATH))
+    e = (e_judges + e_nets) / 2
+    P = np.exp(e - e.max(1, keepdims=True)); P /= P.sum(1, keepdims=True)
+    a_j, a_n = e_judges.argmax(1), e_nets.argmax(1)
+    ch = np.flatnonzero(np.diff(codes)) + 1
+    rows = []
+    for a, b in zip(np.r_[0, ch], np.r_[ch, len(codes)]):
+        k = int(codes[a])
+        if k not in (H, A):
+            continue
+        pk = P[a:b, k]; other = np.delete(P[a:b], k, axis=1).max(1)
+        edge = np.r_[P[max(a - 5, 0):a + 5, k], P[max(b - 5, 0):b + 5, k]]
+        rows.append((a, b, k, [pk.mean(), np.percentile(pk, 10), (pk - other).mean(), np.log((b - a) / FPS),
+                               np.mean(a_j[a:b] == k), np.mean(a_n[a:b] == k), np.abs(np.diff(edge)).mean()]))
+    m = ph["model"]
+    Z = (np.array([r[3] for r in rows]) - np.array(m["mu"])) / np.array(m["sd"])
+    p_ok = 1 / (1 + np.exp(-(m["beta"][0] + Z @ np.array(m["beta"][1:]))))
+    q = -10 * np.log10(np.clip(1 - p_ok, 1e-4, 1))
+    with open(path, "w", newline="") as fh:
+        fh.write("start_frame,end_frame,team,duration_s,quality_q\n")
+        for (a, b, k, _), qq in zip(rows, q):
+            fh.write("{},{},{},{:.2f},{:.1f}\n".format(a, b - 1, "H" if k == H else "A", (b - a) / FPS, qq))
+    lo = ph["low_q_share_external"]
+    print("quality: {} possessions, median Q {:.1f}, Q < 5 on {:.0%} (external games {:.0%} to {:.0%}); wrote {}".format(
+        len(q), np.median(q), np.mean(q < 5), lo[0], lo[2], os.path.relpath(path, ROOT)))
 
 
 # == 6-7. main ====================================================================================
 
-def main(out_path=None, rebuild_cache=False):
+def main(out_path=None, rebuild_cache=False, quality_path=None):
     out_path = out_path or OUT_PATH
     warnings.filterwarnings("ignore", category=RuntimeWarning)  # all-NaN rows are expected
     if rebuild_cache or not os.path.exists(CACHE_PATH):
@@ -877,10 +925,12 @@ def main(out_path=None, rebuild_cache=False):
     lt = lt + TAG_LOGIT * tags
 
     # 5-6: sequence model, averaged (in log space) with the judges
-    emis = emissions(ld, lt, dec["temp_dead"], dec["temp_team"])
-    emis = (emis + seq_emissions(SEQ_PATH, dall, tn, tb, seen, periods)) / 2
-    print("model v10 = judges from {} + sequence model from {}, averaged".format(
-        os.path.relpath(PARAMS_PATH, ROOT), os.path.relpath(SEQ_PATH, ROOT)))
+    emis_judges = emissions(ld, lt, dec["temp_dead"], dec["temp_team"])
+    emis_nets = seq_emissions(SEQ_PATH, dall, tn, tb, seen, periods)
+    emis = (emis_judges + emis_nets) / 2
+    print("model v11 = judges from {} + average of {} networks from {}, averaged".format(
+        os.path.relpath(PARAMS_PATH, ROOT), len({k.split("__")[0] for k in np.load(SEQ_PATH).files}),
+        os.path.relpath(SEQ_PATH, ROOT)))
 
     # 7: Viterbi per half
     codes = np.full(n, X, dtype=np.int8)
@@ -928,11 +978,16 @@ def main(out_path=None, rebuild_cache=False):
           "(validation games: {})".format(*np.nanpercentile(vh[graded], [10, 90]),
                                           *np.nanpercentile(va[graded], [10, 90]), REVERSAL_RANGE))
     print("\nwrote {}".format(os.path.relpath(out_path, ROOT)))
+    if quality_path:
+        write_quality(quality_path, codes, emis_judges, emis_nets)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--out", help="output CSV (default evaluation/results/v10_standalone.csv)")
+    parser.add_argument("--out", help="output CSV (default evaluation/results/v11_standalone.csv)")
     parser.add_argument("--rebuild-cache", action="store_true", help="re-read the raw tracking even if cache/ exists")
+    parser.add_argument("--quality", nargs="?", const=os.path.join(ROOT, "evaluation", "results", "v11_quality.csv"),
+                        help="also write the Phred-like quality of each possession (default evaluation/results/v11_quality.csv); "
+                             "the submission CSV is unchanged")
     args = parser.parse_args()
-    main(args.out and os.path.abspath(args.out), args.rebuild_cache)
+    main(args.out and os.path.abspath(args.out), args.rebuild_cache, args.quality and os.path.abspath(args.quality))
