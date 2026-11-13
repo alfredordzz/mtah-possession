@@ -1,8 +1,8 @@
 """The 'DNA' of a submission: the match read as a string of letters. Aggregates only; no ground truth is read.
 
-    python diagnostics/possession_dna.py                          # evaluation/results/v11_standalone.csv
+    python diagnostics/possession_dna.py                          # evaluation/results/v12_standalone.csv
     python diagnostics/possession_dna.py evaluation/results/v10_standalone.csv
-    python diagnostics/possession_dna.py evaluation/results/v11_standalone.csv --quality evaluation/results/v11_quality.csv
+    python diagnostics/possession_dna.py evaluation/results/v11_standalone.csv --quality evaluation/results/v11_quality.csv   # the fallback
 
 Each run of the same label becomes one letter: L (home has the ball), V (away has the ball), M (dead
 ball). The script counts:
@@ -103,8 +103,8 @@ def main():
     import possession_metrics as pm  # noqa: E402
     import argparse
     ap = argparse.ArgumentParser(description="DNA of a submission file and the quality gate")
-    ap.add_argument("csv", nargs="?", default=os.path.join(ROOT, "evaluation", "results", "v11_standalone.csv"))
-    ap.add_argument("--quality", default=os.path.join(ROOT, "evaluation", "results", "v11_quality.csv"),
+    ap.add_argument("csv", nargs="?", default=os.path.join(ROOT, "evaluation", "results", "v12_standalone.csv"))
+    ap.add_argument("--quality", default=os.path.join(ROOT, "evaluation", "results", "v12_quality.csv"),
                     help="per-possession quality file from possession_v11_standalone.py --quality (used if it exists)")
     a = ap.parse_args()
     path = a.csv
