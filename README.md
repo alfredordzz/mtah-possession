@@ -30,11 +30,11 @@ The match data is not in this repository; unpack the bundle into `data/` as desc
 
 ```bash
 python cache_atd.py        # reads the tactical ATD once into cache/atd_tactical.npz (+ sanity checks)
-python possession_v11_standalone.py   # writes evaluation/results/v11_standalone.csv and validates it (the submission)
+python possession_v12_standalone.py   # writes evaluation/results/v12_standalone.csv and validates it (the submission)
 ```
 
-The submission is v11 (below), SHA-256
-`47D4A7D4A9E7424E12DB7C0E12845C0E02AE574FB163CE46439710FCE902CB1A`; v10 stays as the fallback.
+The submission is v12 (below; SHA-256 to be confirmed on the match data). v11 stays as the fallback, SHA-256
+`47D4A7D4A9E7424E12DB7C0E12845C0E02AE574FB163CE46439710FCE902CB1A`.
 
 v10: `possession_v10.py` runs the single-file pipeline
 (`possession_v9_standalone.py`) with the regression weights in `model_v9_1_params.json` and the
@@ -129,7 +129,45 @@ python possession_v10.py            # writes evaluation/results/v10.csv
 python diagnostics/feature_shift.py # how far the match's features fall outside the training range
 ```
 
-### v11 (the submission): v10 with the average of three networks
+### v12 (the submission): v11 plus two networks trained at several paces
+
+The competition tracking moves about 20% slower than the training games (players' speed towards the
+attacked goal). v12 keeps v11's three networks and adds two more, trained in the same way on the 8
+external games played at normal pace, 20% slower and 25% faster (tempo copies resampled in time). The
+five networks' probabilities are averaged; judges, average with them and editor (16 / 35) unchanged.
+Weights in `model_v12_seq.npz` (prefixes `n0__` to `n4__`); `possession_v12_standalone.py` is the
+whole pipeline in one file.
+
+| Check (spellF1, mean) | v11 | v12 | v12 better on |
+|---|---|---|---|
+| 8 external games x 4 variants, leave one game out | 0.7178 | 0.7206 (+0.0028) | 18 / 32 |
+| same, variants rebuilt with seed +1000 | 0.7178 | 0.7196 (+0.0018) | 18 / 32 |
+| same, variants rebuilt with seed +2000 | 0.7180 | 0.7199 (+0.0020) | 20 / 32 |
+| same 32 cases played 20% slower (like the competition match) | 0.7054 | 0.7131 (+0.0077) | 28 / 32 |
+| 20 SkillCorner games (other provider, other labels) | 0.4662 | 0.4681 (+0.0019) | 12 / 20 |
+
+v12 is never below v11; its gain at normal pace is under the usual +0.005 rule, and it was chosen for
+the slower pace measured in the competition tracking. Two identical extra networks (no tempo copies)
+gave +0.0014 at normal pace and -0.0005 when slower, so the gain comes from the tempo copies.
+
+```powershell
+python possession_v12_standalone.py --quality
+Get-FileHash evaluation\results\v12_standalone.csv
+python diagnostics/possession_dna.py evaluation/results/v12_standalone.csv --quality evaluation/results/v12_quality.csv
+```
+
+Training the two extra networks (byte-identical to the shipped ones, checked for seed 10):
+
+```bash
+python training/train_seq.py validation --seed 10 --epochs 8 --tempos 0.8,1.25 --out cache/seq_a10.npz
+python training/train_seq.py validation --seed 11 --epochs 8 --tempos 0.8,1.25 --out cache/seq_a11.npz
+python training/build_v11_seq.py model_v10_seq.npz cache/seq_s1.npz cache/seq_s2.npz cache/seq_a10.npz cache/seq_a11.npz --out model_v12_seq.npz
+```
+
+The per-possession quality (`--quality`) and the gate's bands were calibrated with v11; they apply to
+v12 unchanged (same judges, same editor, two more networks in the average).
+
+### v11 (fallback): v10 with the average of three networks
 
 v11 is v10 with one change: instead of one sequence network it averages the probabilities of three,
 trained in exactly the same way on the same external data with different random seeds (seed 0 is the
@@ -266,7 +304,9 @@ descriptive statistics of v11's own answers for the competition match (aggregate
 | Path | Purpose |
 |---|---|
 | `cache_atd.py` | Reads the tactical ATD into arrays in metres, with checks against the published numbers |
-| `possession_v11_standalone.py` | The submission (v11) in one file, raw tracking to CSV |
+| `possession_v12_standalone.py` | The submission (v12) in one file, raw tracking to CSV |
+| `model_v12_seq.npz` | The five networks of v12 (prefixes `n0__` to `n4__`) |
+| `possession_v11_standalone.py` | v11 (fallback) in one file |
 | `model_v11_seq.npz` | The three networks of v11 (prefixes `n0__`, `n1__`, `n2__`) |
 | `possession_v10.py` | v10 (fallback) |
 | `possession_v10_standalone.py` | The whole v10 in one file, raw tracking to CSV (byte-identical to `possession_v10.py`) |
