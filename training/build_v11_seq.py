@@ -15,7 +15,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def main():
-    paths = sys.argv[1:]
+    args = sys.argv[1:]
+    dest = os.path.join(ROOT, "model_v11_seq.npz")
+    if "--out" in args:
+        i = args.index("--out"); dest = os.path.abspath(args[i + 1]); del args[i:i + 2]
+    paths = args
     if len(paths) < 2:
         sys.exit(__doc__)
     out = {}
@@ -23,7 +27,6 @@ def main():
         z = np.load(p)
         for k in z.files:
             out["n{}__{}".format(i, k)] = z[k]
-    dest = os.path.join(ROOT, "model_v11_seq.npz")
     np.savez(dest, **out)
     print("wrote {} with {} networks".format(os.path.relpath(dest, ROOT), len(paths)))
 

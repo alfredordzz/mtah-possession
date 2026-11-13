@@ -51,6 +51,19 @@ def halves(p, X):
             for a, b in p["periods"]]
 
 
+def tempo_copy(g, f):
+    """The same game played f times as fast (f < 1: slower): positions, ball and speeds resampled in time,
+    labels taken from the nearest original frame. Used for v12's two extra networks (f = 0.8 and 1.25)."""
+    def interp(a, src):
+        lo = np.floor(src).astype(int); hi = np.minimum(lo + 1, len(a) - 1)
+        w = (src - lo).reshape((-1,) + (1,) * (a.ndim - 1))
+        return ((1 - w) * a[lo] + w * a[hi]).astype(np.float32)
+    n = len(g["ball"]); m = int((n - 1) / f); src = np.arange(m) * f
+    return dict(ball=interp(g["ball"], src), pos=interp(g["pos"], src), speed=interp(g["speed"], src) * f,
+                slot_team=g["slot_team"], gt=g["gt"][np.round(src).astype(int)],
+                periods=[(int(np.ceil(a / f)), min(m - 1, int(b / f))) for a, b in g["periods"]])
+
+
 def stdz(x, mu, sd):
     z = np.clip((x - mu) / sd, -6.0, 6.0)
     z[:, sd < 1e-3] = 0.0
@@ -153,6 +166,7 @@ def main():
     ap.add_argument("--out", help="output .npz (default model_v10_seq.npz in the repository root)")
     ap.add_argument("--seed", type=int, default=SEED)
     ap.add_argument("--epochs", type=int, default=EPOCHS)
+    ap.add_argument("--tempos", default="", help="comma-separated tempo copies added to the training data, e.g. 0.8,1.25 (v12)")
     a = ap.parse_args()
     root = a.root
     out = a.out or a.out_pos or os.path.join(os.path.dirname(HERE), "model_v10_seq.npz")
@@ -160,8 +174,12 @@ def main():
     seqs = []
     for v in TF.TRAIN:
         for name, path in paths[v]:
-            p = TF.prepare(TF.load_npz(path))
+            g = TF.load_npz(path)
+            p = TF.prepare(g)
             seqs += halves(p, feats(p))
+            for f in [float(t) for t in a.tempos.split(",") if t]:
+                p = TF.prepare(tempo_copy(g, f))
+                seqs += halves(p, feats(p))
             print("prepared", v, name, flush=True)
     P, mu, sd = train(seqs, a.seed, a.epochs)
     np.savez(out, mu=mu, sd=sd, **{k: np.asarray(v) for k, v in P.items()})
