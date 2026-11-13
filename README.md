@@ -32,7 +32,8 @@ The match data is not in this repository; unpack the bundle into `data/` as desc
 python possession_v13_standalone.py   # reads the tracking once into cache/, writes evaluation/results/v13_standalone.csv and validates it (the submission)
 ```
 
-The submission is v13 (below), SHA-256 to be added after the first run on the match data.
+The submission is v13 (below), SHA-256
+`F2386073426F2BFEAB551DED835140FE26741A59C794B20790ECB384A042363B` (first run on Alfredo's machine, 13 nov 2026).
 v12 stays as the fallback (`python previous_versions/possession_v12_standalone.py`), SHA-256
 `5D36670AA83E509255C64603F8F2E5160FAD789EA796F59ACA0EC541B28C7FEE`; v11 before it, SHA-256
 `47D4A7D4A9E7424E12DB7C0E12845C0E02AE574FB163CE46439710FCE902CB1A`.
@@ -65,7 +66,7 @@ py -3.12 -m venv .venv
 pip install -r requirements-lock.txt
 # unpack the organisers' bundle into data\ (see DATA.md) or set $env:MTAH_DATA_DIR
 python possession_v13_standalone.py
-Get-FileHash evaluation\results\v13_standalone.csv     # must match the v13 hash above
+Get-FileHash evaluation\results\v13_standalone.csv     # F2386073426F2BFEAB551DED835140FE26741A59C794B20790ECB384A042363B
 ```
 
 If the hashes differ, `python diagnostics/compare_submissions.py first.csv second.csv` reports how
