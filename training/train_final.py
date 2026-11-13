@@ -32,7 +32,7 @@ import warnings
 import numpy as np
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-for sub in ("", "evaluation"):
+for sub in ("", "previous_versions", "evaluation"):
     sys.path.insert(0, os.path.join(ROOT, sub))
 import model_v2 as M2  # noqa: E402
 import model_v4 as M4  # noqa: E402
@@ -157,7 +157,9 @@ def main():
     if args.transition_window is not None:
         M9.TRANSITION_WINDOW = args.transition_window
     name = args.name or args.version
-    out = args.out or os.path.join(ROOT, "model_{}_params.json".format(name.replace(".", "_")))
+    fname = "model_{}_params.json".format(name.replace(".", "_"))
+    # v9.1's judges stay in the root (v12 uses them); the older versions live in previous_versions/
+    out = args.out or os.path.join(ROOT, fname if fname == "model_v9_1_params.json" else os.path.join("previous_versions", fname))
     warnings.filterwarnings("ignore", category=RuntimeWarning)
     t0 = time.time()
 

@@ -867,7 +867,7 @@ python training/train_seq.py validation --seed 1 --epochs 8 --out cache/seq_s1.n
 python training/train_seq.py validation --seed 2 --epochs 8 --out cache/seq_s2.npz
 python training/train_seq.py validation --seed 10 --epochs 8 --tempos 0.8,1.25 --out cache/seq_a10.npz
 python training/train_seq.py validation --seed 11 --epochs 8 --tempos 0.8,1.25 --out cache/seq_a11.npz
-python training/build_v11_seq.py model_v10_seq.npz cache/seq_s1.npz cache/seq_s2.npz cache/seq_a10.npz cache/seq_a11.npz --out model_v12_seq.npz</pre>
+python training/build_v11_seq.py previous_versions/model_v10_seq.npz cache/seq_s1.npz cache/seq_s2.npz cache/seq_a10.npz cache/seq_a11.npz --out model_v12_seq.npz</pre>
 </section>
 </div>
 </div>

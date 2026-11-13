@@ -29,20 +29,25 @@ The match data is not in this repository; unpack the bundle into `data/` as desc
 [DATA.md](DATA.md), or point `MTAH_DATA_DIR` at it.
 
 ```bash
-python cache_atd.py        # reads the tactical ATD once into cache/atd_tactical.npz (+ sanity checks)
-python possession_v12_standalone.py   # writes evaluation/results/v12_standalone.csv and validates it (the submission)
+python possession_v12_standalone.py   # reads the tracking once into cache/, writes evaluation/results/v12_standalone.csv and validates it (the submission)
 ```
 
 The submission is v12 (below), SHA-256
 `5D36670AA83E509255C64603F8F2E5160FAD789EA796F59ACA0EC541B28C7FEE`; it passes the quality gate. v11 stays as the fallback, SHA-256
 `47D4A7D4A9E7424E12DB7C0E12845C0E02AE574FB163CE46439710FCE902CB1A`.
 
+Everything the submission needs is in the root: `possession_v12_standalone.py`, `model_v12_seq.npz`,
+`model_v9_1_params.json` (the judges), `model_v11_phred.json` (quality, only with `--quality`) and the
+organisers' `games.py`, `starter/` and `evaluation/`. Every earlier version (v1 to v11, with its
+weights and `cache_atd.py`) is in `previous_versions/` and still runs from the repository root,
+e.g. `python previous_versions/possession_v11_standalone.py`.
+
 v10: `possession_v10.py` runs the single-file pipeline
 (`possession_v9_standalone.py`) with the regression weights in `model_v9_1_params.json` and the
 sequence model in `model_v10_seq.npz`, all in numpy. The output is deterministic: the same data and
 code produce the same file, SHA-256
 `842EA46B1035BDA05A6B708D40E78BBF8138E6ECBF87C824E06AD7CA4A646A37`. Earlier versions can still be
-reproduced with `python possession_v9_1.py` (SHA-256 `FE39AA79…B6F5B`), `python possession_v9.py`
+reproduced with `python previous_versions/possession_v9_1.py` (SHA-256 `FE39AA79…B6F5B`), `python previous_versions/possession_v9.py`
 (SHA-256 `A5F2DDEB…F7529CC`), `possession_v8.py`,
 `possession_v6.py` and `possession_v4.py`.
 
@@ -58,9 +63,8 @@ py -3.12 -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements-lock.txt
 # unpack the organisers' bundle into data\ (see DATA.md) or set $env:MTAH_DATA_DIR
-python cache_atd.py
-python possession_v10.py
-Get-FileHash evaluation\results\v10.csv     # 842EA46B1035BDA05A6B708D40E78BBF8138E6ECBF87C824E06AD7CA4A646A37
+python possession_v12_standalone.py
+Get-FileHash evaluation\results\v12_standalone.csv     # 5D36670AA83E509255C64603F8F2E5160FAD789EA796F59ACA0EC541B28C7FEE
 ```
 
 If the hashes differ, `python diagnostics/compare_submissions.py first.csv second.csv` reports how
@@ -77,7 +81,7 @@ in `model_v9_1_params.json` and `model_v10_seq.npz`, and the organisers' loaders
 `--out path.csv`), byte-identical to `v10.csv`.
 
 ```powershell
-python possession_v10_standalone.py
+python previous_versions/possession_v10_standalone.py
 Get-FileHash evaluation\results\v10_standalone.csv   # 842EA46B1035BDA05A6B708D40E78BBF8138E6ECBF87C824E06AD7CA4A646A37
 ```
 
@@ -89,7 +93,7 @@ It writes `evaluation/results/v9_standalone.csv` (or `--out path.csv`), which is
 (`A5F2DDEB…`).
 
 ```powershell
-python possession_v9_standalone.py
+python previous_versions/possession_v9_standalone.py
 Get-FileHash evaluation\results\v9_standalone.csv   # same hash as v9.csv
 ```
 
@@ -104,7 +108,7 @@ with the validation variants rebuilt from two other seeds, +0.0075 (27/32) and +
 Held-out spellF1: noisy 0.704, noisy with gaps 0.685, smooth 0.662, smooth with gaps 0.641.
 
 ```powershell
-python possession_v9_standalone.py --params model_v9_1_params.json --out evaluation\results\v9_1.csv
+python previous_versions/possession_v9_standalone.py --params model_v9_1_params.json --out evaluation\results\v9_1.csv
 # retrain: python training/train_final.py VALIDATION_ROOT --version v9 --name v9.1 --transition-window 75
 ```
 
@@ -126,7 +130,7 @@ inference is plain numpy inside `possession_v9_standalone.py`.
 | 20 SkillCorner games (other provider, other labels), trained on the 8 | 0.448 | 0.456 (+0.008) | 13 / 20 |
 
 ```powershell
-python possession_v10.py            # writes evaluation/results/v10.csv
+python previous_versions/possession_v10.py            # writes evaluation/results/v10.csv
 python diagnostics/feature_shift.py # how far the match's features fall outside the training range
 ```
 
@@ -162,7 +166,7 @@ Training the two extra networks (byte-identical to the shipped ones, checked for
 ```bash
 python training/train_seq.py validation --seed 10 --epochs 8 --tempos 0.8,1.25 --out cache/seq_a10.npz
 python training/train_seq.py validation --seed 11 --epochs 8 --tempos 0.8,1.25 --out cache/seq_a11.npz
-python training/build_v11_seq.py model_v10_seq.npz cache/seq_s1.npz cache/seq_s2.npz cache/seq_a10.npz cache/seq_a11.npz --out model_v12_seq.npz
+python training/build_v11_seq.py previous_versions/model_v10_seq.npz cache/seq_s1.npz cache/seq_s2.npz cache/seq_a10.npz cache/seq_a11.npz --out model_v12_seq.npz
 ```
 
 The per-possession quality (`--quality`) and the gate's bands were calibrated with v11; they apply to
@@ -188,7 +192,7 @@ network in the weights file it gives the same CSV as v10.
 A single extra network (8 epochs) alone adds only +0.0007 and +0.0043: the gain comes from averaging.
 
 ```powershell
-python possession_v11_standalone.py
+python previous_versions/possession_v11_standalone.py
 Get-FileHash evaluation\results\v11_standalone.csv   # 47D4A7D4A9E7424E12DB7C0E12845C0E02AE574FB163CE46439710FCE902CB1A
 ```
 
@@ -198,7 +202,7 @@ file (`evaluation/results/v11_quality.csv`, git-ignored like every labels file);
 and its hash do not change.
 
 ```powershell
-python possession_v11_standalone.py --quality
+python previous_versions/possession_v11_standalone.py --quality
 python diagnostics/possession_dna.py     # ends with PASS or FAIL
 ```
 
@@ -215,10 +219,10 @@ retraining seed 1 with the command below gave a network byte-identical to the on
 
 ```bash
 pip install "jax[cpu]" optax
-python training/train_seq.py validation                                   # seed 0, 12 epochs -> model_v10_seq.npz
+python training/train_seq.py validation                                   # seed 0, 12 epochs -> previous_versions/model_v10_seq.npz
 python training/train_seq.py validation --seed 1 --epochs 8 --out cache/seq_s1.npz
 python training/train_seq.py validation --seed 2 --epochs 8 --out cache/seq_s2.npz
-python training/build_v11_seq.py model_v10_seq.npz cache/seq_s1.npz cache/seq_s2.npz   # -> model_v11_seq.npz
+python training/build_v11_seq.py previous_versions/model_v10_seq.npz cache/seq_s1.npz cache/seq_s2.npz   # -> previous_versions/model_v11_seq.npz
 ```
 
 ## Reproducing the training (external data only)
@@ -235,10 +239,10 @@ Requirements: `pip install -r training/requirements-training.txt`.
 
 ```bash
 python training/build_validation.py sample-data/data idsse_npz validation
-python training/train_final.py validation                 # rewrites model_v9_params.json
-python training/train_final.py validation --version v8    # rewrites model_v8_params.json
-python training/train_final.py validation --version v6    # rewrites model_v6_params.json
-python training/train_final.py validation --version v4    # rewrites model_v4_params.json
+python training/train_final.py validation                 # rewrites previous_versions/model_v9_params.json
+python training/train_final.py validation --version v8    # rewrites previous_versions/model_v8_params.json
+python training/train_final.py validation --version v6    # rewrites previous_versions/model_v6_params.json
+python training/train_final.py validation --version v4    # rewrites previous_versions/model_v4_params.json
 ```
 
 `train_final.py` first scores every match with a model fitted on the other seven (leave one game
@@ -293,7 +297,7 @@ For reference, the official baseline scores 0.2433 on the full competition match
 
 ## Interactive explainer (docs/)
 
-`docs/index.html` is a self-contained page that shows how the submission (v11) decides, step by step: two 90 s stretches
+`docs/index.html` is a self-contained page that shows how the submission (v12) decides, step by step: two 90 s stretches
 of real external matches (IDSSE, CC BY 4.0, scored with models trained without them), a synthetic play,
 a lab with controlled experiments and 24 stress tests on the 8 external games, and a tab with
 descriptive statistics of v11's own answers for the competition match (aggregates from
@@ -304,23 +308,15 @@ descriptive statistics of v11's own answers for the competition match (aggregate
 
 | Path | Purpose |
 |---|---|
-| `cache_atd.py` | Reads the tactical ATD into arrays in metres, with checks against the published numbers |
 | `possession_v12_standalone.py` | The submission (v12) in one file, raw tracking to CSV |
 | `model_v12_seq.npz` | The five networks of v12 (prefixes `n0__` to `n4__`) |
-| `possession_v11_standalone.py` | v11 (fallback) in one file |
-| `model_v11_seq.npz` | The three networks of v11 (prefixes `n0__`, `n1__`, `n2__`) |
-| `possession_v10.py` | v10 (fallback) |
-| `possession_v10_standalone.py` | The whole v10 in one file, raw tracking to CSV (byte-identical to `possession_v10.py`) |
-| `possession_v9_1.py` | v9.1 (previous submission) |
-| `possession_v9_standalone.py` | The whole v9 / v9.1 pipeline in one file (needs only numpy and the organisers' loaders) |
-| `possession_v9.py` | v9 (previous submission) |
-| `model_v2.py`, `model_v3.py`, `model_v4.py`, `model_v6.py`, `model_v8.py`, `model_v9.py` | The model (each version builds on the features of the previous ones) |
-| `model_v9_1_params.json` | Regression weights and decoding costs (v9.1 and v10) |
-| `model_v10_seq.npz` | Weights of v10's sequence model, with the training mean and spread of its inputs |
-| `model_v9_params.json` | Weights of v9 |
+| `model_v9_1_params.json` | The two judges (regressions), touch/flight thresholds and decoding costs (v9.1 to v12) |
+| `model_v11_phred.json` | Weights of the per-possession quality score (`--quality`, v11 and v12) |
+| `games.py`, `starter/`, `evaluation/` | The organisers' loaders, baseline and metric |
 | `training/` | Conversion of the external data, validation variants, training |
-| `diagnostics/` | Automatic checks on the provided data; they print aggregates only |
-| `possession_v1.py`, `possession_v3.py`, `possession_v4.py`, `possession_v6.py`, `possession_v8.py`, `model_v3_params.json`, `model_v4_params.json`, `model_v6_params.json`, `model_v8_params.json` | Earlier versions, kept for the record |
+| `diagnostics/` | Automatic checks on the provided data and on a submission; they print aggregates only |
+| `docs/index.html` | «La v12 por dentro», the explanatory page |
+| `previous_versions/` | v1 to v11 with their weights (`possession_v11_standalone.py` + `model_v11_seq.npz` is the fallback), the older model modules `model_v2.py` ... `model_v9.py` and `cache_atd.py`; run them from the repository root |
 
 ## Rules and data
 

@@ -18,7 +18,8 @@ import warnings
 
 import numpy as np
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
+HERE = os.path.dirname(os.path.abspath(__file__))   # previous_versions/
+ROOT = os.path.dirname(HERE)                          # repository root (data, cache, starter, evaluation)
 for sub in ("", "starter", "evaluation"):
     sys.path.insert(0, os.path.join(ROOT, sub))
 
@@ -33,7 +34,7 @@ import model_v9 as M  # noqa: E402
 from model_v9 import FPS  # noqa: E402
 
 CACHE_PATH = os.path.join(ROOT, "cache", "atd_tactical.npz")
-PARAMS_PATH = os.path.join(ROOT, "model_v9_params.json")
+PARAMS_PATH = os.path.join(HERE, "model_v9_params.json")
 OUT_PATH = os.path.join(ROOT, "evaluation", "results", "v9.csv")
 
 # Smart Tagging exists only for this match, so its weight cannot be calibrated on the validation

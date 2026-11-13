@@ -1,11 +1,11 @@
-"""v6: possession for the competition match with the model trained on other games.
+"""v8: possession for the competition match with the model trained on other games.
 
-    python possession_v6.py
+    python possession_v8.py
 
 Needs cache/atd_tactical.npz (from cache_atd.py), the Smart Tagging XML, model_v2.py, model_v3.py,
-model_v4.py, model_v6.py and model_v6_params.json (weights learned on 8 external games by
+model_v4.py, model_v6.py, model_v8.py and model_v8_params.json (weights learned on 8 external games by
 training/train_final.py; nothing in it comes from this match or its ground truth).
-Writes evaluation/results/v6.csv and validates it.
+Writes evaluation/results/v8.csv and validates it.
 
 Prints counts and format checks only: no comparison against the public ground truth, which the
 organisers' rules reserve for checking that the file is well formed.
@@ -18,7 +18,8 @@ import warnings
 
 import numpy as np
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
+HERE = os.path.dirname(os.path.abspath(__file__))   # previous_versions/
+ROOT = os.path.dirname(HERE)                          # repository root (data, cache, starter, evaluation)
 for sub in ("", "starter", "evaluation"):
     sys.path.insert(0, os.path.join(ROOT, sub))
 
@@ -27,12 +28,13 @@ from baseline import team_names, write_submission  # noqa: E402
 from load_smart_tagging import load as load_tags  # noqa: E402
 import possession_metrics as pm  # noqa: E402
 import model_v4 as M4  # noqa: E402
-import model_v6 as M  # noqa: E402
-from model_v6 import FPS  # noqa: E402
+import model_v6 as M6  # noqa: E402
+import model_v8 as M  # noqa: E402
+from model_v8 import FPS  # noqa: E402
 
 CACHE_PATH = os.path.join(ROOT, "cache", "atd_tactical.npz")
-PARAMS_PATH = os.path.join(ROOT, "model_v6_params.json")
-OUT_PATH = os.path.join(ROOT, "evaluation", "results", "v6.csv")
+PARAMS_PATH = os.path.join(HERE, "model_v8_params.json")
+OUT_PATH = os.path.join(ROOT, "evaluation", "results", "v8.csv")
 
 # Smart Tagging exists only for this match, so its weight cannot be calibrated on the validation
 # games. It is kept small: a phase tag nudges the team call, it never decides it on its own.
@@ -40,7 +42,7 @@ OUT_PATH = os.path.join(ROOT, "evaluation", "results", "v6.csv")
 # alive frames), durations and agreement (~73-80%) the real tags showed against the tracking-only
 # model (diagnostics/phase_agreement.py): 0.25 to 0.5 is neutral, 1 or more hurts. 0.25 is the
 # value that did best when the simulated tags were least reliable.
-# (That check was run with v4's team model; v6 keeps the same small value.)
+# (That check was run with v4's team model; v6 and v8 keep the same small value.)
 TAG_LOGIT = 0.25
 OFFENSIVE = {"build up", "progression", "creating chances", "attacking transition", "long ball",
              "ball in final third", "ball in the box", "players in the box", "set pieces"}
@@ -85,12 +87,12 @@ def main():
     M4.TOUCH_SMOOTH = int(touch_cfg.get("smooth", M4.TOUCH_SMOOTH))
     M4.CONTROL_REACH = touch_cfg.get("control_reach", M4.CONTROL_REACH)
     flight_cfg = params.get("flight") or {}
-    M.ASSIGN_WIN = int(flight_cfg.get("assign_win", M.ASSIGN_WIN))
-    M.FLIGHT_SPEED = flight_cfg.get("speed", M.FLIGHT_SPEED)
-    M.FLIGHT_MIN_M = flight_cfg.get("min_m", M.FLIGHT_MIN_M)
-    M.FLIGHT_MAX_S = flight_cfg.get("max_s", M.FLIGHT_MAX_S)
-    M.DECAY_S = flight_cfg.get("decay_s", M.DECAY_S)
-    M.LOOKAHEAD_S = tuple(flight_cfg.get("lookahead_s", M.LOOKAHEAD_S))
+    M6.ASSIGN_WIN = int(flight_cfg.get("assign_win", M6.ASSIGN_WIN))
+    M6.FLIGHT_SPEED = flight_cfg.get("speed", M6.FLIGHT_SPEED)
+    M6.FLIGHT_MIN_M = flight_cfg.get("min_m", M6.FLIGHT_MIN_M)
+    M6.FLIGHT_MAX_S = flight_cfg.get("max_s", M6.FLIGHT_MAX_S)
+    M6.DECAY_S = flight_cfg.get("decay_s", M6.DECAY_S)
+    M6.LOOKAHEAD_S = tuple(flight_cfg.get("lookahead_s", M6.LOOKAHEAD_S))
 
     blocks = half_video_blocks(GAME)
     periods = [(first, last) for _, first, last in blocks]
@@ -142,13 +144,22 @@ def main():
     minutes = graded.sum() / FPS / 60
     print("  touches detected: {:.1f} per minute of graded time (8 validation games, smooth tracker profile: 13-23)".format(
         touch[graded].sum() / minutes))
-    sign, conf = M.touch_teams(c, touch)
+    sign, conf = M6.touch_teams(c, touch)
     ball_s = M4.smooth_ball(c["_ball"].astype(np.float64), M4.TOUCH_SMOOTH)
     v = M4.ball_velocity(ball_s, k=3)
-    fl = M.flights(c, touch, sign, conf, np.hypot(v[:, 0], v[:, 1]))
+    fl = M6.flights(c, touch, sign, conf, np.hypot(v[:, 0], v[:, 1]))
     turn = sum(1 for f in fl if f[2] != f[3])
     print("  ball flights between touches: {:.1f} per minute, {:.0%} between different teams "
           "(validation games: 7.5-10 per minute, ~33%)".format(len(fl) / minutes, turn / max(len(fl), 1)))
+    m = graded & seen
+    for name, team, sign in (("home", M.H, c["sign_home"]), ("away", M.A, -c["sign_home"])):
+        players = pos[:, slot_team == team].astype(np.float64)
+        depth, width, compact, _, _, _ = M.team_shape(players, sign, c["_ball"].astype(np.float64), c["length"])
+        visible = np.sum(~np.isnan(players[..., 0]), axis=1)
+        print("  {} shape, medians: depth {:.1f} m, width {:.1f} m, compactness {:.1f} m, {:.0f} players tracked "
+              "(validation games: 28-33, 24-32, 16-19 m, 10)".format(
+                  name, np.nanmedian(depth[m]), np.nanmedian(width[m]), np.nanmedian(compact[m]),
+                  np.median(visible[graded])))
     print("\nwrote {}".format(os.path.relpath(OUT_PATH, ROOT)))
 
 
