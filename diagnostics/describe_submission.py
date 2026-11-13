@@ -1,12 +1,12 @@
 """Descriptive statistics of a submission file. Aggregates only; no ground truth is read.
 
-    python diagnostics/describe_submission.py                          # evaluation/results/v11_standalone.csv
+    python diagnostics/describe_submission.py                          # evaluation/results/v12_standalone.csv
     python diagnostics/describe_submission.py evaluation/results/v9_1.csv
 
 Prints what the file says happened in the match: how many possessions, how long, how much dead
 ball, how possession changes hands, and how all of that moves through the match. Each line is shown
 next to the same measure on the 8 external games (diagnostics/describe_ref.json): their true labels
-and what v11 predicts there, held out (v10 is kept in the reference file too). That is the only yardstick: these numbers say what the model
+and what v12 predicts there, held out (v10 and v11 are kept in the reference file too). That is the only yardstick: these numbers say what the model
 answered, not whether it is right.
 """
 
@@ -85,7 +85,7 @@ LINES = [
 
 
 def main():
-    path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "evaluation", "results", "v11_standalone.csv")
+    path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "evaluation", "results", "v12_standalone.csv")
     codes = pm.label_codes(pm.read_label_csv(path))
     ref = json.load(open(os.path.join(ROOT, "diagnostics", "describe_ref.json")))
     blocks = half_video_blocks(GAME)
@@ -102,10 +102,10 @@ def main():
     print("  duración mediana: local {:.1f} s, visitante {:.1f} s\n".format(s["dur_home_med"], s["dur_away_med"]))
 
     print("1. EL PARTIDO COMPLETO, CONTRA LOS 8 PARTIDOS EXTERNOS")
-    print("  {:<46} {:>8}   {:>20}   {:>10}".format("", "este", "externos: verdad", "externos: v11"))
+    print("  {:<46} {:>8}   {:>20}   {:>10}".format("", "este", "externos: verdad", "externos: v12"))
     print("  {:<46} {:>8}   {:>20}   {:>10}".format("", "archivo", "mediana [mín-máx]", "mediana"))
     for key, text, fmt in LINES:
-        t, v = ref["truth"][key], ref["v11"][key]
+        t, v = ref["truth"][key], ref["v12"][key]
         rng = "{} [{}-{}]".format(fmt.format(t[1]), fmt.format(t[0]), fmt.format(t[2]))
         print("  {:<46} {:>8}   {:>20}   {:>10}".format(text, fmt.format(s[key]), rng, fmt.format(v[1])))
 
