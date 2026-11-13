@@ -29,16 +29,17 @@ The match data is not in this repository; unpack the bundle into `data/` as desc
 [DATA.md](DATA.md), or point `MTAH_DATA_DIR` at it.
 
 ```bash
-python possession_v12_standalone.py   # reads the tracking once into cache/, writes evaluation/results/v12_standalone.csv and validates it (the submission)
+python possession_v13_standalone.py   # reads the tracking once into cache/, writes evaluation/results/v13_standalone.csv and validates it (the submission)
 ```
 
-The submission is v12 (below), SHA-256
-`5D36670AA83E509255C64603F8F2E5160FAD789EA796F59ACA0EC541B28C7FEE`; it passes the quality gate. v11 stays as the fallback, SHA-256
+The submission is v13 (below), SHA-256 to be added after the first run on the match data.
+v12 stays as the fallback (`python previous_versions/possession_v12_standalone.py`), SHA-256
+`5D36670AA83E509255C64603F8F2E5160FAD789EA796F59ACA0EC541B28C7FEE`; v11 before it, SHA-256
 `47D4A7D4A9E7424E12DB7C0E12845C0E02AE574FB163CE46439710FCE902CB1A`.
 
-Everything the submission needs is in the root: `possession_v12_standalone.py`, `model_v12_seq.npz`,
+Everything the submission needs is in the root: `possession_v13_standalone.py`, `model_v12_seq.npz` (the five networks, shared with v12),
 `model_v9_1_params.json` (the judges), `model_v11_phred.json` (quality, only with `--quality`) and the
-organisers' `games.py`, `starter/` and `evaluation/`. Every earlier version (v1 to v11, with its
+organisers' `games.py`, `starter/` and `evaluation/`. Every earlier version (v1 to v12, with its
 weights and `cache_atd.py`) is in `previous_versions/` and still runs from the repository root,
 e.g. `python previous_versions/possession_v11_standalone.py`.
 
@@ -63,8 +64,8 @@ py -3.12 -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements-lock.txt
 # unpack the organisers' bundle into data\ (see DATA.md) or set $env:MTAH_DATA_DIR
-python possession_v12_standalone.py
-Get-FileHash evaluation\results\v12_standalone.csv     # 5D36670AA83E509255C64603F8F2E5160FAD789EA796F59ACA0EC541B28C7FEE
+python possession_v13_standalone.py
+Get-FileHash evaluation\results\v13_standalone.csv     # must match the v13 hash above
 ```
 
 If the hashes differ, `python diagnostics/compare_submissions.py first.csv second.csv` reports how
@@ -134,13 +135,46 @@ python previous_versions/possession_v10.py            # writes evaluation/result
 python diagnostics/feature_shift.py # how far the match's features fall outside the training range
 ```
 
-### v12 (the submission): v11 plus two networks trained at several paces
+### v13 (the submission): v12 also reading the match sped up 1.25x
+
+The competition tracking moves about 20% slower than the training games. v12 handled that with two
+networks trained on slowed and sped-up copies; v13 adds the same idea at prediction time, with no
+retraining: the five v12 networks read the match as is and once more resampled 1.25x faster (the pitch
+features recomputed on the faster copy), the second reading's probabilities are interpolated back to the
+original frames, and the two readings are averaged. Judges, average with them and editor (16 / 35)
+unchanged; same model files as v12. Nothing is tuned on the match.
+
+| Check (spellF1, mean) | v12 | v13 | v13 better on |
+|---|---|---|---|
+| 8 external games x 4 variants played 20% slower, leave one game out | 0.7131 | 0.7195 (+0.0064) | 24 / 32 |
+| same, variants rebuilt with seed +1000 (not used to choose v13) | 0.7112 | 0.7184 (+0.0072) | 28 / 32 |
+| 8 external games x 4 variants, normal pace | 0.7206 | 0.7223 (+0.0017) | 21 / 32 |
+| same, variants rebuilt with seed +1000 | 0.7190 | 0.7189 (-0.0002) | 17 / 32 |
+| 20 SkillCorner games (other provider, final models) | 0.4681 | 0.4696 (+0.0014) | 11 / 20 |
+
+How it was chosen: the planned variant (reading at 0.8x, 1x and 1.25x) was flat (+0.0006 normal,
+-0.0010 slow); reading slower hurt (-0.0107 slow, 3 / 32); reading faster was the only one that helped.
+Because it was picked after seeing those 32 cases, it was confirmed on the seed +1000 games, which were
+not used to choose it. Same criterion as v12: passes the rule on the slow cases, ties at normal pace.
+A dilated convolutional network (TCN) as a sixth network was also tried and dropped (-0.0002 normal,
++0.0012 slow).
+
+```powershell
+python possession_v13_standalone.py --quality
+Get-FileHash evaluation\results\v13_standalone.csv
+python diagnostics/possession_dna.py evaluation/results/v13_standalone.csv --quality evaluation/results/v13_quality.csv
+```
+
+The per-possession quality (`--quality`) and the gate's bands were calibrated with v11; they apply to
+v13 unchanged.
+
+### v12 (fallback): v11 plus two networks trained at several paces
 
 The competition tracking moves about 20% slower than the training games (players' speed towards the
 attacked goal). v12 keeps v11's three networks and adds two more, trained in the same way on the 8
 external games played at normal pace, 20% slower and 25% faster (tempo copies resampled in time). The
 five networks' probabilities are averaged; judges, average with them and editor (16 / 35) unchanged.
-Weights in `model_v12_seq.npz` (prefixes `n0__` to `n4__`); `possession_v12_standalone.py` is the
+Weights in `model_v12_seq.npz` (prefixes `n0__` to `n4__`); `previous_versions/possession_v12_standalone.py` is the
 whole pipeline in one file.
 
 | Check (spellF1, mean) | v11 | v12 | v12 better on |
@@ -156,9 +190,8 @@ the slower pace measured in the competition tracking. Two identical extra networ
 gave +0.0014 at normal pace and -0.0005 when slower, so the gain comes from the tempo copies.
 
 ```powershell
-python possession_v12_standalone.py --quality
+python previous_versions/possession_v12_standalone.py
 Get-FileHash evaluation\results\v12_standalone.csv   # 5D36670AA83E509255C64603F8F2E5160FAD789EA796F59ACA0EC541B28C7FEE
-python diagnostics/possession_dna.py evaluation/results/v12_standalone.csv --quality evaluation/results/v12_quality.csv
 ```
 
 Training the two extra networks (byte-identical to the shipped ones, checked for seed 10):
@@ -308,15 +341,15 @@ descriptive statistics of v11's own answers for the competition match (aggregate
 
 | Path | Purpose |
 |---|---|
-| `possession_v12_standalone.py` | The submission (v12) in one file, raw tracking to CSV |
-| `model_v12_seq.npz` | The five networks of v12 (prefixes `n0__` to `n4__`) |
-| `model_v9_1_params.json` | The two judges (regressions), touch/flight thresholds and decoding costs (v9.1 to v12) |
-| `model_v11_phred.json` | Weights of the per-possession quality score (`--quality`, v11 and v12) |
+| `possession_v13_standalone.py` | The submission (v13) in one file, raw tracking to CSV |
+| `model_v12_seq.npz` | The five networks of v12, also used by v13 (prefixes `n0__` to `n4__`) |
+| `model_v9_1_params.json` | The two judges (regressions), touch/flight thresholds and decoding costs (v9.1 to v13) |
+| `model_v11_phred.json` | Weights of the per-possession quality score (`--quality`, v11 to v13) |
 | `games.py`, `starter/`, `evaluation/` | The organisers' loaders, baseline and metric |
 | `training/` | Conversion of the external data, validation variants, training |
 | `diagnostics/` | Automatic checks on the provided data and on a submission; they print aggregates only |
 | `docs/index.html` | «La v12 por dentro», the explanatory page |
-| `previous_versions/` | v1 to v11 with their weights (`possession_v11_standalone.py` + `model_v11_seq.npz` is the fallback), the older model modules `model_v2.py` ... `model_v9.py` and `cache_atd.py`; run them from the repository root |
+| `previous_versions/` | v1 to v12 with their weights (`possession_v12_standalone.py` is the fallback; it uses `model_v12_seq.npz` from the root), the older model modules `model_v2.py` ... `model_v9.py` and `cache_atd.py`; run them from the repository root |
 
 ## Rules and data
 

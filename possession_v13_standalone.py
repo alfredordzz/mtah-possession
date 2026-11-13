@@ -1,18 +1,18 @@
-"""v12 candidate in a single file: possession for the competition match, from the raw tracking to the CSV.
+"""v13 in a single file: possession for the competition match, from the raw tracking to the CSV.
 
-    python possession_v12_standalone.py                  # writes evaluation/results/v12_standalone.csv
-    python possession_v12_standalone.py --quality        # also the per-possession quality (separate file)
+    python possession_v13_standalone.py                  # writes evaluation/results/v13_standalone.csv
+    python possession_v13_standalone.py --quality        # also the per-possession quality (separate file)
 
-v12 is v11 plus two networks trained on the 8 external games played at normal pace, 20% slower and
-25% faster (the competition match moves about 20% slower than the training games). The five networks'
-probabilities are averaged before the usual 50/50 average with the judges; everything else is v11.
-Validated on external data only: +0.0028 over v11 at normal pace (18/32; +0.0018 and +0.0020 with two
-other noise seeds), +0.0077 on the same games played 20% slower (28/32), +0.0019 on 20 SkillCorner
-games (12/20). Never below v11 in any check, but the normal-pace gain is under the usual +0.005 rule.
+v13 is v12 (judges + five networks + Viterbi, same model files) plus one step at prediction time: the five
+networks also read the match sped up 1.25x (the tracking resampled in time, so a match played ~20% slower
+looks like a normal-pace one); those probabilities are mapped back to the original frames and averaged with
+the normal reading. Nothing is retrained or tuned on the match. Validated on external data only (leave one
+game out, 8 games x 4 variants): on the games played 20% slower +0.0064 over v12 (24/32) and, on the same
+games rebuilt with another noise seed, +0.0072 (28/32); at normal pace +0.0017 (21/32) and -0.0002 (17/32).
 
 Needs only numpy and
     model_v9_1_params.json       the two judges and the touch/flight thresholds (8 external games)
-    model_v12_seq.npz            the five networks' weights and input scaling (same 8 games);
+    model_v12_seq.npz            the five networks' weights and input scaling (same 8 games; the same file as v12);
                                  built with training/train_seq.py and training/build_v11_seq.py
     games.py, starter/, evaluation/   the organisers' loaders and checks, unchanged
     data/                        the provided tracking, metadata and Smart Tagging
@@ -27,8 +27,9 @@ Pipeline
     2. dead-ball judge      player speeds + ball position/speed + ball-gap context -> logit P(D)
     3. team judge           positions, touches, flights, shape, counter-press, reversal -> logit P(H)
     4. Smart Tagging        +/-0.25 on the team logit where a tagged phase names a team
-    5. sequence model       three bidirectional GRUs at 5 Hz over the same 168 features; their
-                            probabilities averaged -> log P(H, A, D)
+    5. sequence model       five bidirectional GRUs at 5 Hz over the same 168 features, run on the
+                            match as is and on the match sped up 1.25x (features recomputed, output
+                            mapped back to the original frames); the 10 readings averaged -> log P(H, A, D)
     6. average              (judges + sequence model) / 2, in log-probability, frame by frame
     7. Viterbi per half     switch cost H<->A 16, dead cost 35; D forced before the tagged kickoff
 """
@@ -54,7 +55,7 @@ import possession_metrics as pm  # noqa: E402
 CACHE_PATH = os.path.join(ROOT, "cache", "atd_tactical.npz")
 PARAMS_PATH = os.path.join(ROOT, "model_v9_1_params.json")
 SEQ_PATH = os.path.join(ROOT, "model_v12_seq.npz")
-OUT_PATH = os.path.join(ROOT, "evaluation", "results", "v12_standalone.csv")
+OUT_PATH = os.path.join(ROOT, "evaluation", "results", "v13_standalone.csv")
 
 H, A, D, X = 0, 1, 2, 3
 FPS = 25
@@ -823,6 +824,37 @@ def seq_log_probs(P, x):
     return lo - m - np.log(np.exp(lo - m).sum(-1, keepdims=True))
 
 
+TEMPO_UP = 1.25          # second reading of the match by the networks: 1.25x faster
+
+
+def resample_tempo(ball, pos, speed, periods, f):
+    """The match as if played f times as fast: positions linearly interpolated at frames 0, f, 2f, ...
+    (a missing neighbour leaves the value missing), speeds multiplied by f, halves mapped accordingly.
+    Same resampling as the pace copies used to train and validate the networks."""
+    n = len(ball)
+    m = int((n - 1) / f)
+    src = np.arange(m) * f
+    lo = np.floor(src).astype(int)
+    hi = np.minimum(lo + 1, n - 1)
+
+    def interp(a):
+        w = (src - lo).reshape((-1,) + (1,) * (a.ndim - 1))
+        return ((1 - w) * a[lo] + w * a[hi]).astype(np.float32)
+
+    periods_f = [(int(np.ceil(a / f)), min(m - 1, int(b / f))) for a, b in periods]
+    return interp(ball), interp(pos), interp(speed) * f, periods_f
+
+
+def back_to_frames(log_p, n, f):
+    """Probabilities read on the match resampled by f, back on the n original frames (linear interpolation)."""
+    P = np.exp(log_p)
+    s = np.minimum(np.arange(n) / f, len(P) - 1)
+    lo = np.floor(s).astype(int)
+    hi = np.minimum(lo + 1, len(P) - 1)
+    w = (s - lo)[:, None]
+    return (1 - w) * P[lo] + w * P[hi]
+
+
 def seq_emissions(path, dall, tn, tb, seen, periods):
     """Per-frame log-probabilities from the sequence model, frames outside the periods left at 0.
     The file holds several networks (prefixes n0__, n1__, ...); each one runs on its own standardised
@@ -925,10 +957,19 @@ def main(out_path=None, rebuild_cache=False, quality_path=None):
     # 5-6: sequence model, averaged (in log space) with the judges
     emis_judges = emissions(ld, lt, dec["temp_dead"], dec["temp_team"])
     emis_nets = seq_emissions(SEQ_PATH, dall, tn, tb, seen, periods)
+    # second reading: the same networks on the match sped up 1.25x, mapped back and averaged
+    ball_f, pos_f, speed_f, periods_f = resample_tempo(ball, pos, speed, periods, TEMPO_UP)
+    c_f = common(ball_f, pos_f, speed_f, slot_team, periods_f, GAMES[GAME]["pitch"])
+    gap_f = gap_context(c_f)
+    dall_f = features_dead(c_f, gap_f)
+    tn_f, tb_f = features_team(c_f, pos_f, slot_team, ball_f, gap_f)
+    emis_fast = seq_emissions(SEQ_PATH, dall_f, tn_f, tb_f, c_f["seen"], periods_f)
+    del c_f, gap_f, dall_f, tn_f, tb_f
+    emis_nets = np.log((np.exp(emis_nets) + back_to_frames(emis_fast, n, TEMPO_UP)) / 2)
     emis = (emis_judges + emis_nets) / 2
-    print("model v12 = judges from {} + average of {} networks from {}, averaged".format(
+    print("model v13 = judges from {} + average of {} networks from {} (match read as is and sped up {}x), averaged".format(
         os.path.relpath(PARAMS_PATH, ROOT), len({k.split("__")[0] for k in np.load(SEQ_PATH).files}),
-        os.path.relpath(SEQ_PATH, ROOT)))
+        os.path.relpath(SEQ_PATH, ROOT), TEMPO_UP))
 
     # 7: Viterbi per half
     codes = np.full(n, X, dtype=np.int8)
@@ -982,10 +1023,10 @@ def main(out_path=None, rebuild_cache=False, quality_path=None):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--out", help="output CSV (default evaluation/results/v12_standalone.csv)")
+    parser.add_argument("--out", help="output CSV (default evaluation/results/v13_standalone.csv)")
     parser.add_argument("--rebuild-cache", action="store_true", help="re-read the raw tracking even if cache/ exists")
-    parser.add_argument("--quality", nargs="?", const=os.path.join(ROOT, "evaluation", "results", "v12_quality.csv"),
-                        help="also write the Phred-like quality of each possession (default evaluation/results/v12_quality.csv); "
+    parser.add_argument("--quality", nargs="?", const=os.path.join(ROOT, "evaluation", "results", "v13_quality.csv"),
+                        help="also write the Phred-like quality of each possession (default evaluation/results/v13_quality.csv); "
                              "the submission CSV is unchanged")
     args = parser.parse_args()
     main(args.out and os.path.abspath(args.out), args.rebuild_cache, args.quality and os.path.abspath(args.quality))
