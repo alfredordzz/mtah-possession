@@ -1,6 +1,6 @@
 """Descriptive statistics of a submission file. Aggregates only; no ground truth is read.
 
-    python diagnostics/describe_submission.py                          # evaluation/results/v12_standalone.csv
+    python diagnostics/describe_submission.py                          # evaluation/results/v13_standalone.csv
     python diagnostics/describe_submission.py evaluation/results/v9_1.csv
 
 Prints what the file says happened in the match: how many possessions, how long, how much dead
@@ -85,7 +85,7 @@ LINES = [
 
 
 def main():
-    path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "evaluation", "results", "v12_standalone.csv")
+    path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "evaluation", "results", "v13_standalone.csv")
     codes = pm.label_codes(pm.read_label_csv(path))
     ref = json.load(open(os.path.join(ROOT, "diagnostics", "describe_ref.json")))
     blocks = half_video_blocks(GAME)
