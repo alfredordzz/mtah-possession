@@ -25,7 +25,7 @@ import time
 
 import numpy as np
 
-MATCH_IDS = ("J03WPY", "J03WMX", "J03WN1", "J03WOH", "J03WOY", "J03WPF", "J03WQF")
+MATCH_IDS = ("J03WPY", "J03WMX", "J03WN1", "J03WOH", "J03WOY", "J03WQQ", "J03WR9")
 MISSING = -32768
 
 
